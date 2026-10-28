@@ -65,6 +65,10 @@ button{cursor:pointer}
 .chip.on{border-color:var(--line);color:var(--line)}
 .chip.on .dot{background:var(--good);opacity:1;box-shadow:0 0 8px var(--good);animation:pulse 1.6s ease-in-out infinite}
 .chip.busy .dot{background:var(--hard);opacity:1}
+.chip.err .dot{background:var(--again);opacity:1}
+.sync-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.sync-row input{flex:1;min-width:0;min-height:42px;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:5px;padding:8px 10px}
+.note a{color:var(--line)}
 .chip.icon{padding:6px 10px;min-width:40px;justify-content:center}
 
 /* ---------- stage ---------- */
@@ -226,6 +230,7 @@ button{cursor:pointer}
       <span class="st-new" id="c-new">0</span><span class="st-learn" id="c-learn">0</span><span class="st-rev" id="c-rev">0</span>
     </div>
     <div class="sys">
+      <button id="btn-sync" class="chip" hidden title="Sincronizar agora"><i class="dot"></i>Sync</button>
       <button id="btn-mic" class="chip"><i class="dot"></i>Voz</button>
       <button id="btn-cam" class="chip"><i class="dot"></i>Mãos</button>
       <button id="btn-smaller" class="chip icon" aria-label="Diminuir texto">A−</button>
@@ -274,11 +279,26 @@ button{cursor:pointer}
             </ol>
             <p id="import-status"></p>
           </div>
+          <h2>Sincronizar aparelhos</h2>
+          <div id="sync-setup" class="note">
+            <p>Deixa o computador, o celular e o tablet com o mesmo progresso e os mesmos baralhos. Os dados ficam num gist secreto da sua conta do GitHub. Faça uma vez em cada aparelho:</p>
+            <ol>
+              <li>Abra <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=HoloCards" target="_blank" rel="noopener">esta página do GitHub</a>, que já vem preenchida (permissão só de <b>gist</b>).</li>
+              <li>Em <b>Expiration</b>, escolha <b>No expiration</b> ou 1 ano. Clique em <b>Generate token</b> no fim da página.</li>
+              <li>Copie a chave que aparece (começa com <b>ghp_</b>), cole abaixo e toque em <b>Conectar</b>. Dá pra usar a mesma chave nos outros aparelhos.</li>
+            </ol>
+            <div class="sync-row"><input type="password" id="sync-token" placeholder="Cole aqui a chave do GitHub" autocomplete="off" spellcheck="false"><button class="btn primary" id="sync-connect">Conectar</button></div>
+          </div>
+          <div id="sync-connected" hidden>
+            <div class="sync-row"><button class="btn primary" id="sync-now">Sincronizar agora</button><button class="btn danger" id="sync-off">Desconectar</button></div>
+          </div>
+          <p class="note" id="sync-status"></p>
           <h2>Ajustes</h2>
           <div class="setting"><label for="set-read">Ler cards em voz alta<small>Lê a pergunta ao aparecer e a resposta ao revelar. Bom pra estudar de olhos fechados.</small></label><input type="checkbox" id="set-read"></div>
           <div class="setting"><label for="set-dwell">Clicar segurando a mira<small>Além da pinça: parar a mira 1 segundo em cima de um botão também clica.</small></label><input type="checkbox" id="set-dwell"></div>
           <div class="setting"><label for="set-swipe">Passar a mão pra virar<small>Mão aberta passando de lado: vira página do PDF ou mostra a resposta.</small></label><input type="checkbox" id="set-swipe"></div>
           <div class="setting"><label for="set-reach">Alcance da mão<small>Menor = mexe menos a mão pra cruzar a tela inteira.</small></label><input type="range" id="set-reach" min="0.35" max="0.95" step="0.05"></div>
+          <div class="setting"><label for="set-pinch">Sensibilidade da pinça<small>Pra esquerda: só clica com os dedos bem encostados. Pra direita: clica com menos esforço.</small></label><input type="range" id="set-pinch" min="0.12" max="0.32" step="0.02"></div>
           <div class="setting"><label for="set-new">Cards novos por dia</label><input type="number" id="set-new" min="0" max="999"></div>
           <div class="setting"><label for="set-cam">Mostrar imagem da câmera</label><input type="checkbox" id="set-cam"></div>
           <div class="setting"><label for="set-invert">PDF no modo escuro</label><input type="checkbox" id="set-invert"></div>
@@ -395,7 +415,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, dwell: false, swipe: true, reach: 0.65, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false },
+  settings: { readAloud: false, dwell: false, swipe: true, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -464,7 +484,11 @@ function queue(cards, prog, deckId) {
   }
   const byDue = (a, b) => prog[a.id].due - prog[b.id].due;
   learnNow.sort(byDue); rev.sort(byDue); learnLater.sort(byDue);
-  const newLeft = Math.max(0, newLimit(deckId) - (S.daily.new[deckId] || 0));
+  // new cards started today are counted from the progress itself, so every synced device agrees
+  const dayStart = eod - DAY;
+  let newToday = 0;
+  for (const id in prog) if ((prog[id].first || 0) >= dayStart) newToday++;
+  const newLeft = Math.max(0, newLimit(deckId) - newToday);
   const freshToday = fresh.slice(0, newLeft);
   return {
     order: [...learnNow, ...rev, ...freshToday, ...learnLater.filter(c => prog[c.id].due <= now + 20 * MIN)],
@@ -476,15 +500,17 @@ function queue(cards, prog, deckId) {
 
 /* ================= decks ================= */
 async function saveDeckList() { await DB.set('decklist', S.decks); }
-async function addDeck(name, cards, prog, source) {
+async function addDeck(name, cards, prog, source, updatedAt = Date.now()) {
   const id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   await DB.set('deck:' + id, cards);
   await DB.set('prog:' + id, prog || {});
-  S.decks.push({ id, name, count: cards.length, source });
+  S.decks.push({ id, name, count: cards.length, source, updatedAt });
   await saveDeckList();
   return id;
 }
-async function deleteDeck(id) {
+async function deleteDeck(id, fromSync) {
+  const gone = S.decks.find(d => d.id === id);
+  if (!fromSync && gone && gone.source !== 'exemplo') Sync.forget(gone.name);
   S.decks = S.decks.filter(d => d.id !== id);
   await saveDeckList();
   await DB.del('deck:' + id); await DB.del('prog:' + id); await DB.del('filter:' + id);
@@ -573,11 +599,11 @@ function answerText(card) { // only the part the learner hasn't heard yet
 function grade(g) {
   if (!S.cur) return;
   if (!S.revealed) { reveal(); log('› resposta revelada, agora dê a nota'); return; }
-  const c = S.cur, before = S.prog[c.id], wasNew = !before || before.s === 'new';
-  S.undo = { id: c.id, before, wasNew };
-  S.prog[c.id] = answer(before, g, Date.now());
-  if (wasNew) S.daily.new[S.deckId] = (S.daily.new[S.deckId] || 0) + 1;
-  DB.set('prog:' + S.deckId, S.prog); DB.set('daily', S.daily);
+  const c = S.cur, before = S.prog[c.id], wasNew = !before || before.s === 'new', now = Date.now();
+  S.undo = { id: c.id, before };
+  S.prog[c.id] = { ...answer(before, g, now), at: now, first: wasNew ? now : before.first };
+  DB.set('prog:' + S.deckId, S.prog);
+  Sync.soon();
   log(`› ${GRADE_LABEL[g].toLowerCase()} · volta em ${fmtIn(S.prog[c.id].due - Date.now())}`);
   pressFx($(`[data-grade="${g}"]`));
   S.lastId = c.id;
@@ -586,9 +612,10 @@ function grade(g) {
 function undo() {
   if (!S.undo) { log('› nada para desfazer', 'warn'); return; }
   const u = S.undo; S.undo = null;
-  if (u.before) S.prog[u.id] = u.before; else delete S.prog[u.id];
-  if (u.wasNew) S.daily.new[S.deckId] = Math.max(0, (S.daily.new[S.deckId] || 1) - 1);
-  DB.set('prog:' + S.deckId, S.prog); DB.set('daily', S.daily);
+  // the restored state gets a fresh timestamp so it also wins on the other devices
+  S.prog[u.id] = { ...(u.before || { s: 'new' }), at: Date.now() };
+  DB.set('prog:' + S.deckId, S.prog);
+  Sync.soon();
   const card = S.cards.find(c => c.id === u.id);
   showCard();
   if (card) { S.cur = card; $('#face-q').hidden = false; $('#empty').hidden = true; $('#face-q').innerHTML = card.front; $('#face-a').innerHTML = card.back; S.revealed = false; reveal(); }
@@ -758,17 +785,28 @@ function runCommand(k) {
     case 'pdf': return setView('pdf');
   }
 }
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IOS_OTHER_BROWSER = IOS && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(navigator.userAgent);
+const VOICE_ERRORS = {
+  'not-allowed': 'Microfone bloqueado para este site. Libere nas permissões do navegador e toque em Voz de novo.',
+  'service-not-allowed': IOS ? 'O iPhone recusou o reconhecimento de voz. Ative Ajustes › Geral › Teclado › Ditado e toque em Voz de novo.' : 'O navegador recusou o reconhecimento de voz. Toque em Voz de novo.',
+  'audio-capture': 'Não consegui usar o microfone. Outro app pode estar usando, ou a câmera ocupou o áudio. Toque em Voz de novo.',
+  'network': 'O reconhecimento de voz precisa de internet.',
+  'language-not-supported': 'Este aparelho não reconhece português por voz.',
+};
 const Voice = (() => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, want = false, paused = false, handled = new Set(), restartTimer = null;
+  let rec = null, want = false, paused = false, handled = new Set(), restartTimer = null, started = false, failures = 0;
   const ui = s => { const b = $('#btn-mic'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
+  function giveUp(msg) { want = false; clearTimeout(restartTimer); ui('off'); log(msg, 'warn'); }
   function boot() {
     if (!want || paused) return;
     try { rec && rec.abort(); } catch (e) {}
     rec = new SR();
-    rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
-    handled = new Set();
-    rec.onstart = () => ui('on');
+    // Safari on iPhone drops long continuous sessions, so it listens one phrase at a time and restarts
+    rec.lang = 'pt-BR'; rec.continuous = !IOS; rec.interimResults = true; rec.maxAlternatives = 3;
+    handled = new Set(); started = false;
+    rec.onstart = () => { started = true; failures = 0; ui('on'); };
     rec.onresult = e => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -785,21 +823,26 @@ const Voice = (() => {
       }
     };
     rec.onerror = e => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { want = false; ui('off'); log('Microfone bloqueado. Libere o microfone para este site nas configurações do navegador.', 'warn'); }
-      else if (e.error === 'network') log('O reconhecimento de voz precisa de internet.', 'warn');
+      if (e.error === 'no-speech' || e.error === 'aborted') return; // silence or our own restart
+      if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(e.error)) giveUp(VOICE_ERRORS[e.error]);
+      else log(VOICE_ERRORS[e.error] || 'Erro de voz: ' + e.error, 'warn');
     };
     rec.onend = () => {
-      if (want && !paused) { ui('busy'); clearTimeout(restartTimer); restartTimer = setTimeout(boot, 250); }
-      else ui('off');
+      if (!want || paused) { ui('off'); return; }
+      // a session that ends without ever starting is a refusal; stop instead of looping silently
+      if (!started && ++failures >= 4) { giveUp('A voz não conseguiu iniciar neste navegador. Toque em Voz de novo.'); return; }
+      ui('busy'); clearTimeout(restartTimer); restartTimer = setTimeout(boot, 250);
     };
-    try { rec.start(); ui('busy'); } catch (e) { setTimeout(boot, 500); }
+    try { rec.start(); ui('busy'); }
+    catch (e) { if (++failures >= 4) giveUp('A voz não conseguiu iniciar: ' + e.message); else restartTimer = setTimeout(boot, 500); }
   }
   return {
     supported: !!SR,
     get on() { return want; },
     start() {
+      if (IOS_OTHER_BROWSER) { log('No iPhone, a voz só funciona no Safari. Abra o endereço pelo Safari.', 'warn'); return; }
       if (!SR) { log('Este navegador não reconhece voz. No Android use o Chrome; no iPhone, o Safari.', 'warn'); return; }
-      want = true; paused = false; boot(); log('› voz ativada. Diga “mostrar”, “bom”, “fácil”…');
+      want = true; paused = false; failures = 0; boot(); log('› voz ativada. Diga “mostrar”, “bom”, “fácil”…');
     },
     stop() { want = false; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} ui('off'); log('› voz desligada'); },
     pause() { if (!want) return; paused = true; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} },
@@ -813,7 +856,7 @@ const Hands = (() => {
   let landmarker = null, stream = null, running = false, lastT = -1, raf = 0;
   const video = $('#cam'), overlay = $('#cam-overlay'), octx = overlay.getContext('2d');
   const ret = $('#reticle'), dwellRing = $('#r-dwell');
-  const P = { x: innerWidth / 2, y: innerHeight / 2, seen: false, lost: 0, pinch: false, pinchAt: null, drag: null, hover: null, hoverSince: 0, cooldown: 0, hist: [], swipeCool: 0 };
+  const P = { x: innerWidth / 2, y: innerHeight / 2, seen: false, seenAt: 0, lost: 0, pinch: false, pinchSince: 0, drag: null, hover: null, hoverSince: 0, cooldown: 0, hist: [], swipeCool: 0 };
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const ui = s => { const b = $('#btn-cam'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
 
@@ -868,7 +911,7 @@ const Hands = (() => {
   }
   function onLost() {
     if (!P.seen) return;
-    if (++P.lost > 8) { P.seen = false; ret.hidden = true; setHover(null); P.pinch = false; P.drag = null; P.hist.length = 0; }
+    if (++P.lost > 8) { P.seen = false; ret.hidden = true; setHover(null); P.pinch = false; P.pinchSince = 0; P.drag = null; P.hist.length = 0; }
   }
   function onHand(lm) {
     const now = performance.now();
@@ -880,15 +923,21 @@ const Hands = (() => {
     const rx = 1 - (lm[4].x + lm[8].x) / 2, ry = (lm[4].y + lm[8].y) / 2;
     const tx = Math.min(1, Math.max(0, (rx - m) / reach)) * innerWidth;
     const ty = Math.min(1, Math.max(0, (ry - m * 0.8) / (reach * 0.95))) * innerHeight;
-    if (!P.seen) { P.x = tx; P.y = ty; P.seen = true; ret.hidden = false; }
+    if (!P.seen) { P.x = tx; P.y = ty; P.seen = true; P.seenAt = now; ret.hidden = false; }
     const speed = Math.hypot(tx - P.x, ty - P.y);
     const a = speed > 80 ? 0.6 : speed > 25 ? 0.38 : 0.2; // adaptive smoothing: steady when still, quick when moving
-    if (!P.pinch || P.drag) { P.x += (tx - P.x) * a; P.y += (ty - P.y) * a; }
+    // the cursor freezes while fingers close, so the pinch lands where it started
+    if ((!P.pinch && !P.pinchSince) || P.drag) { P.x += (tx - P.x) * a; P.y += (ty - P.y) * a; }
     ret.style.transform = `translate(${P.x}px,${P.y}px)`;
 
-    // pinch with hysteresis
-    if (!P.pinch && pinchRatio < 0.3) { P.pinch = true; onPinchStart(now); }
-    else if (P.pinch && pinchRatio > 0.48) { P.pinch = false; P.drag = null; }
+    // pinch: fingers must stay closed ~150 ms, with the hand fairly still, before it counts as a click
+    const closeAt = S.settings.pinchSens, openAt = closeAt + 0.2;
+    if (!P.pinch) {
+      if (pinchRatio < closeAt && now - P.seenAt > 500) {
+        if (!P.pinchSince) { if (speed < 40) P.pinchSince = now; }
+        else if (now - P.pinchSince > 150) { P.pinch = true; P.pinchSince = 0; onPinchStart(now); }
+      } else P.pinchSince = 0;
+    } else if (pinchRatio > openAt) { P.pinch = false; P.drag = null; }
     ret.classList.toggle('pinch', P.pinch);
     if (P.drag) {
       const dy = P.y - P.drag.y; P.drag.y = P.y;
@@ -909,9 +958,11 @@ const Hands = (() => {
     const palm = { x: 1 - lm[9].x, y: lm[9].y, t: now };
     P.hist.push(palm);
     while (P.hist.length && now - P.hist[0].t > 320) P.hist.shift();
-    if (S.settings.swipe && !P.pinch && now > P.swipeCool && P.hist.length > 3) {
+    // only an open hand (3+ fingers stretched) can swipe, so ordinary pointing never turns pages
+    const open = [[8, 6], [12, 10], [16, 14], [20, 18]].filter(([tip, pip]) => dist(lm[tip], lm[0]) > dist(lm[pip], lm[0]) * 1.1).length >= 3;
+    if (S.settings.swipe && open && !P.pinch && !P.pinchSince && now > P.swipeCool && P.hist.length > 3) {
       const o = P.hist[0], dx = palm.x - o.x, dy = palm.y - o.y;
-      if (Math.abs(dx) > 0.26 && Math.abs(dx) > 2.2 * Math.abs(dy)) {
+      if (Math.abs(dx) > 0.32 && Math.abs(dx) > 2.5 * Math.abs(dy)) {
         P.swipeCool = now + 900; P.hist.length = 0; P.hoverSince = now; P.cooldown = now + 900;
         onSwipe(dx > 0 ? 'right' : 'left');
       }
@@ -1057,9 +1108,7 @@ function parseTextDeck(text) {
   // ids come from the card's text so a re-import of the same file keeps progress
   const seen = new Map();
   const idFor = s => {
-    let h = 2166136261;
-    for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619); }
-    const base = (h >>> 0).toString(36), n = seen.get(base) || 0;
+    const base = fnv(s), n = seen.get(base) || 0;
     seen.set(base, n + 1);
     return n ? base + '_' + n : base;
   };
@@ -1085,6 +1134,7 @@ async function importText(file) {
   const r = await upsertDeck(file.name.replace(/\.[^.]+$/, ''), 'texto', cards, {});
   setImportStatus(r.isNew ? `${cards.length} cards importados.` : `Baralho atualizado: ${r.added} novos, ${r.removed} removidos, progresso mantido.`);
   await openDeck(r.id, ''); renderLib();
+  Sync.soon(500);
 }
 
 function readVarint(b, o) { let r = 0, s = 0, x; do { x = b[o.i++]; r += (x & 0x7f) * 2 ** s; s += 7; } while (x & 0x80 && o.i < b.length); return r; }
@@ -1179,22 +1229,19 @@ function renderTemplate(tpl, fields, ctx) { // the subset of Anki's template lan
 }
 // Re-importing a deck with the same name updates it: new cards are added, deleted ones removed,
 // and for each card the schedule with more reviews wins (studied here or in Anki).
-async function upsertDeck(name, source, cards, prog) {
+async function upsertDeck(name, source, cards, prog, updatedAt = Date.now()) {
   const existing = S.decks.find(d => d.name === name && d.source === source);
-  if (!existing) return { id: await addDeck(name, cards, prog, source), isNew: true };
+  if (!existing) return { id: await addDeck(name, cards, prog, source, updatedAt), isNew: true };
   const oldCards = await DB.get('deck:' + existing.id) || [];
-  const oldProg = await DB.get('prog:' + existing.id) || {};
+  const oldProg = existing.id === S.deckId ? S.prog : await DB.get('prog:' + existing.id) || {};
   const oldIds = new Set(oldCards.map(c => c.id)), newIds = new Set(cards.map(c => c.id));
   const merged = {};
-  for (const c of cards) {
-    const a = oldProg[c.id], b = prog[c.id];
-    const pick = a && b ? ((b.reps || 0) > (a.reps || 0) ? b : a) : (a || b);
-    if (pick) merged[c.id] = pick;
-  }
+  for (const c of cards) { const pick = newerEntry(oldProg[c.id], prog[c.id]); if (pick) merged[c.id] = pick; }
   await DB.set('deck:' + existing.id, cards);
   await DB.set('prog:' + existing.id, merged);
-  existing.count = cards.length;
+  existing.count = cards.length; existing.updatedAt = updatedAt;
   await saveDeckList();
+  if (existing.id === S.deckId) { S.cards = cards; S.prog = merged; }
   return { id: existing.id, isNew: false, added: cards.filter(c => !oldIds.has(c.id)).length, removed: oldCards.filter(c => !newIds.has(c.id)).length };
 }
 async function importApkg(file) {
@@ -1231,7 +1278,7 @@ async function importApkg(file) {
     else { try { const j = JSON.parse(q('SELECT decks FROM col')[0][0]); for (const k in j) deckNames[k] = j[k].name; } catch (e) {} }
 
     const notes = new Map((q('SELECT id, mid, flds, tags FROM notes') || []).map(([id, mid, f, tags]) => [id, { mid, f: String(f).split('\x1f'), tags: String(tags || '').trim() }]));
-    const rows = q('SELECT id, nid, did, ord, type, queue, due, ivl, factor, lapses, reps FROM cards ORDER BY due, nid, ord') || [];
+    const rows = q('SELECT id, nid, did, ord, type, queue, due, ivl, factor, lapses, reps, mod FROM cards ORDER BY due, nid, ord') || [];
     const models = readModels(q);
 
     // load images referenced by the notes and templates
@@ -1261,7 +1308,7 @@ async function importApkg(file) {
     const groups = new Map(); // top-level name -> {cards, prog}
     const now = Date.now();
     let skipped = 0;
-    for (const [cid, nid, did, ord, type, queueN, due, ivl, factor, lapses, reps] of rows) {
+    for (const [cid, nid, did, ord, type, queueN, due, ivl, factor, lapses, reps, mod] of rows) {
       const note = notes.get(nid);
       if (!note) continue;
       if (queueN === -1) { skipped++; continue; } // suspended
@@ -1289,8 +1336,9 @@ async function importApkg(file) {
       const id = 'a' + cid;
       g.cards.push({ id, front: clean(front, media), back: clean(back, media), full, sub: rest.join('::') });
       const ease = factor ? factor / 1000 : 2.5;
-      if (type === 2 && queueN >= 0) g.prog[id] = { s: 'review', ivl: Math.max(1, ivl), ease, due: (crt + due * 86400) * 1000, reps, lapses };
-      else if (type === 1 || type === 3) g.prog[id] = { s: type === 3 ? 'relearn' : 'learn', step: 0, ease, ivl: Math.max(1, ivl || 1), due: now, reps, lapses };
+      const at = (mod || 0) * 1000; // when Anki last changed the card, so the newer review wins either way
+      if (type === 2 && queueN >= 0) g.prog[id] = { s: 'review', ivl: Math.max(1, ivl), ease, due: (crt + due * 86400) * 1000, reps, lapses, at };
+      else if (type === 1 || type === 3) g.prog[id] = { s: type === 3 ? 'relearn' : 'learn', step: 0, ease, ivl: Math.max(1, ivl || 1), due: now, reps, lapses, at };
     }
     db.close();
     if (!groups.size) throw new Error('o pacote não tem cards (ou estão todos suspensos)');
@@ -1304,10 +1352,169 @@ async function importApkg(file) {
     setImportStatus(report.join(' · ') + (skipped ? ` · ${skipped} suspensos ignorados` : ''));
     await openDeck(ids.includes(S.deckId) ? S.deckId : ids[0], ids.includes(S.deckId) ? S.filter : '');
     renderLib();
+    Sync.soon(500);
   } catch (e) {
     setImportStatus('Não consegui importar: ' + e.message);
   }
 }
+
+/* ================= sync between devices (a private GitHub gist) ================= */
+function fnv(s) { let h = 2166136261; for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+// the most recently answered version of a card wins; reviews done before timestamps existed fall back to review count
+function newerEntry(a, b) {
+  if (!a) return b; if (!b) return a;
+  const ta = a.at || 0, tb = b.at || 0;
+  if (ta !== tb) return tb > ta ? b : a;
+  return (b.reps || 0) > (a.reps || 0) ? b : a;
+}
+function mergeProg(local, remote) {
+  const out = { ...local };
+  for (const k in remote) out[k] = newerEntry(local[k], remote[k]);
+  return out;
+}
+async function packJson(obj) { // gzip + base64 keeps a 1,200-card deck well under the gist's 1 MB inline limit
+  const stream = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+async function unpackJson(b64) {
+  const bin = atob(b64.trim()), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}
+const Sync = (() => {
+  const API = 'https://api.github.com', MAIN = 'holocards.json';
+  let busy = false, again = false, timer = null, last = 0, tombstones = null;
+  const enabled = () => !!S.settings.syncToken;
+  function ui(state, text) {
+    const b = $('#btn-sync');
+    b.hidden = !enabled();
+    b.classList.toggle('on', state === 'ok'); b.classList.toggle('busy', state === 'busy'); b.classList.toggle('err', state === 'err');
+    if (text) $('#sync-status').textContent = text;
+    $('#sync-connected').hidden = !enabled(); $('#sync-setup').hidden = enabled();
+  }
+  async function gh(path, opts = {}) {
+    const headers = { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + S.settings.syncToken };
+    if (opts.body) headers['Content-Type'] = 'application/json';
+    const r = await fetch(API + path, { ...opts, headers, cache: 'no-store' });
+    if (r.status === 401) throw Object.assign(new Error('a chave do GitHub é inválida ou expirou. Gere outra e conecte de novo.'), { fatal: true });
+    if (!r.ok) throw Object.assign(new Error('o GitHub respondeu ' + r.status), { status: r.status });
+    return r.json();
+  }
+  const fileText = async f => !f ? null : f.truncated ? (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
+  async function findGist() {
+    if (S.settings.gistId) {
+      try { return await gh('/gists/' + S.settings.gistId); } catch (e) { if (e.status !== 404) throw e; }
+    }
+    const list = await gh('/gists?per_page=100');
+    const found = list.find(g => g.files && g.files[MAIN]);
+    const gist = found ? await gh('/gists/' + found.id) : await gh('/gists', {
+      method: 'POST',
+      body: JSON.stringify({ description: 'HoloCards: progresso sincronizado entre aparelhos', public: false, files: { [MAIN]: { content: JSON.stringify({ v: 1, decks: {}, prog: {} }) } } }),
+    });
+    S.settings.gistId = gist.id; saveSettings();
+    return gist;
+  }
+  async function run() {
+    if (!enabled()) { ui('off'); return; }
+    if (busy) { again = true; return; }
+    if (!navigator.onLine) { ui('err', 'Sem internet. Sincroniza sozinho quando a conexão voltar.'); return; }
+    busy = true; ui('busy', 'Sincronizando…');
+    try {
+      tombstones ||= await DB.get('tombstones') || [];
+      const gist = await findGist();
+      const remote = JSON.parse(await fileText(gist.files[MAIN]) || '{}');
+      remote.decks ||= {}; remote.prog ||= {};
+      let touched = false, pulled = 0;
+
+      // 1. decks imported or deleted on another device
+      for (const [name, meta] of Object.entries(remote.decks)) {
+        const local = S.decks.find(d => d.name === name && d.source !== 'exemplo');
+        if (meta.deleted) {
+          if (local && (local.updatedAt || 0) < meta.updatedAt) { await deleteDeck(local.id, true); touched = true; }
+          continue;
+        }
+        if (local && (local.updatedAt || 0) >= meta.updatedAt) continue;
+        const f = gist.files[meta.file];
+        if (!f) continue;
+        const cards = await unpackJson(await fileText(f));
+        await upsertDeck(name, meta.source || 'anki', cards, remote.prog[name] || {}, meta.updatedAt);
+        touched = true; pulled++;
+      }
+
+      // 2. progress, merged card by card in both directions; 3. decks this device has newer
+      const out = { v: 1, decks: { ...remote.decks }, prog: { ...remote.prog } };
+      const files = {};
+      for (const d of S.decks) {
+        if (d.source === 'exemplo') continue;
+        const local = d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {};
+        const merged = mergeProg(local, remote.prog[d.name] || {});
+        if (Object.keys(merged).some(k => merged[k] !== local[k])) {
+          await DB.set('prog:' + d.id, merged);
+          if (d.id === S.deckId) S.prog = merged;
+          touched = true;
+        }
+        out.prog[d.name] = merged;
+        const rm = remote.decks[d.name];
+        if (!rm || rm.deleted || (rm.updatedAt || 0) < (d.updatedAt || 0)) {
+          const file = 'deck-' + fnv(d.name) + '.txt';
+          files[file] = { content: await packJson(await DB.get('deck:' + d.id) || []) };
+          out.decks[d.name] = { file, updatedAt: d.updatedAt || Date.now(), count: d.count, source: d.source };
+        }
+      }
+      for (const t of tombstones) {
+        const rm = out.decks[t.name];
+        if (!rm || (rm.updatedAt || 0) <= t.at) { out.decks[t.name] = { deleted: true, updatedAt: t.at }; delete out.prog[t.name]; }
+      }
+
+      const text = JSON.stringify(out);
+      if (Object.keys(files).length || text !== JSON.stringify(remote)) {
+        files[MAIN] = { content: text };
+        await gh('/gists/' + gist.id, { method: 'PATCH', body: JSON.stringify({ files }) });
+      }
+      if (tombstones.length) { tombstones = []; DB.set('tombstones', []); }
+      last = Date.now();
+      ui('ok', `Sincronizado às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${pulled ? ` · ${pulled} baralho(s) recebidos` : ''}.`);
+      if (touched) {
+        if (S.view === 'lib') renderLib();
+        if (!S.revealed) showCard(); // a card answered on another device is no longer due here
+        else renderCounts(queue(S.filter ? S.cards.filter(c => inFilter(c, S.filter)) : S.cards, S.prog, S.deckId).counts);
+      }
+    } catch (e) {
+      ui('err', 'Não consegui sincronizar: ' + e.message);
+      if (e.fatal) log('Sincronização parada: ' + e.message, 'warn');
+    } finally {
+      busy = false;
+      if (again) { again = false; soon(1500); }
+    }
+  }
+  function soon(ms = 4000) { if (!enabled()) return; clearTimeout(timer); timer = setTimeout(run, ms); }
+  return {
+    run, soon,
+    get enabled() { return enabled(); },
+    ui,
+    stale: () => Date.now() - last > 30e3,
+    async forget(name) {
+      if (!enabled()) return;
+      tombstones ||= await DB.get('tombstones') || [];
+      tombstones.push({ name, at: Date.now() });
+      await DB.set('tombstones', tombstones);
+      soon(500);
+    },
+    async connect(token) {
+      S.settings.syncToken = token.trim(); S.settings.gistId = '';
+      ui('busy', 'Conferindo a chave…');
+      try { await gh('/user'); }
+      catch (e) { S.settings.syncToken = ''; saveSettings(); ui('off', 'A chave não funcionou: ' + e.message); return; }
+      saveSettings();
+      await run();
+    },
+    disconnect() { S.settings.syncToken = ''; S.settings.gistId = ''; saveSettings(); ui('off', 'Desconectado. O progresso continua salvo neste aparelho.'); },
+  };
+})();
 
 /* ================= sample deck ================= */
 const SAMPLE = [
@@ -1336,7 +1543,14 @@ function sampleCards() {
 async function requestWakeLock() {
   try { if ('wakeLock' in navigator) S.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (Voice.on || Hands.on)) requestWakeLock(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (Voice.on || Hands.on) requestWakeLock();
+    if (Sync.stale()) Sync.run(); // pick up what was studied on the other devices meanwhile
+  } else Sync.run(); // push before the phone puts the tab to sleep
+});
+addEventListener('online', () => Sync.soon(500));
+setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 120e3);
 
 function bindUI() {
   for (const t of $$('.tab')) t.onclick = () => setView(t.dataset.view);
@@ -1346,6 +1560,15 @@ function bindUI() {
   $('#btn-tolib').onclick = () => setView('lib');
   $('#btn-mic').onclick = () => { if (Voice.on) Voice.stop(); else { Voice.start(); requestWakeLock(); } };
   $('#btn-cam').onclick = () => { if (Hands.on) Hands.stop(); else { Hands.start(); requestWakeLock(); } };
+  $('#btn-sync').onclick = () => Sync.run();
+  $('#sync-now').onclick = () => Sync.run();
+  $('#sync-off').onclick = () => Sync.disconnect();
+  $('#sync-connect').onclick = () => {
+    const t = $('#sync-token').value.trim();
+    if (!t) { $('#sync-status').textContent = 'Cole a chave do GitHub no campo antes de conectar.'; return; }
+    $('#sync-token').value = '';
+    Sync.connect(t);
+  };
   $('#btn-bigger').onclick = bigger;
   $('#btn-smaller').onclick = smaller;
   $('#btn-full').onclick = () => {
@@ -1373,6 +1596,7 @@ function bindUI() {
   bindCheck('#set-invert', 'pdfInvert', () => $('#pdf-wrap').classList.toggle('inverted', st.pdfInvert));
   $('#pdf-wrap').classList.toggle('inverted', st.pdfInvert);
   const reach = $('#set-reach'); reach.value = st.reach; reach.oninput = () => { st.reach = +reach.value; saveSettings(); };
+  const pinch = $('#set-pinch'); pinch.value = st.pinchSens; pinch.oninput = () => { st.pinchSens = +pinch.value; saveSettings(); };
   const nw = $('#set-new'); nw.value = st.newPerDay; nw.onchange = () => { st.newPerDay = Math.max(0, Math.min(999, +nw.value || 0)); nw.value = st.newPerDay; saveSettings(); showCard(); };
 
   document.addEventListener('keydown', e => {
@@ -1405,6 +1629,8 @@ async function init() {
   const pdf = await DB.get('pdf:last');
   if (pdf) PDF.open(pdf.data, pdf.name, await DB.get('pdfpage:' + pdf.name) || 1).catch(() => {});
   if (!Voice.supported) $('#btn-mic').title = 'Reconhecimento de voz indisponível neste navegador';
+  Sync.ui('off', Sync.enabled ? '' : 'Ainda não conectado. Por enquanto o progresso fica só neste aparelho.');
+  Sync.run();
 }
 init();
 </script>
