@@ -25,8 +25,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
+    // 'no-cache' revalidates with GitHub Pages instead of trusting its 10-minute browser cache
     e.respondWith(
-      fetch(req)
+      fetch(url.href, { cache: 'no-cache', credentials: 'same-origin' })
         .then(res => {
           if (res.ok) { const copy = res.clone(); caches.open(APP).then(c => c.put(req, copy)); }
           return res;
