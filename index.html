@@ -137,6 +137,9 @@ button{cursor:pointer}
 .face .ak-gab-ERRADO{color:var(--again)}
 .deck-sub{grid-column:1/-1;display:flex;gap:8px;align-items:center}
 .deck-sub select{flex:1;min-width:0;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:8px;color:var(--fg)}
+.deck-sub{flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.deck-sub input[type=date]{background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:6px 8px;color:var(--fg)}
+.exam-plan{font-family:var(--f-mono);font-size:13px;color:var(--hard)}
 .divider{display:flex;align-items:center;gap:12px;font:500 12px var(--f-hud);letter-spacing:.3em;color:var(--line)}
 .divider::before,.divider::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--line-dim),transparent)}
 .empty{text-align:center;font-size:18px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:14px}
@@ -176,6 +179,35 @@ button{cursor:pointer}
 .cmds dt{font-family:var(--f-mono);color:var(--line);white-space:nowrap}
 .cmds dd{margin:0;color:var(--muted)}
 
+/* Statistics */
+#view-stats{overflow:auto;-webkit-user-select:text;user-select:text}
+.stats-page{max-width:1150px;margin-inline:auto;padding-bottom:30px;display:flex;flex-direction:column;gap:6px}
+.stats-page h2{font:600 13px var(--f-hud);letter-spacing:.24em;text-transform:uppercase;color:var(--line);margin:18px 0 8px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:6px}
+.tile{border:1px solid var(--line-dim);border-radius:6px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile .k{font:500 12px var(--f-hud);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font:600 30px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;color:var(--fg)}
+.tile .s{font-size:13px;color:var(--muted)}
+.meter{height:6px;border-radius:3px;background:var(--line-faint);overflow:hidden;margin-top:4px}
+.meter i{display:block;height:100%;background:var(--line);border-radius:3px}
+.chart{position:relative;border:1px solid var(--line-dim);border-radius:6px;background:var(--panel);padding:10px 10px 4px}
+.chart svg{display:block;width:100%;height:auto;max-height:240px}
+.chart .tip{position:absolute;pointer-events:none;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:5px 8px;font:12px var(--f-mono);color:var(--fg);white-space:nowrap;transform:translate(-50%,-100%)}
+.stats-cols{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px}
+@media (max-width:820px){.stats-cols{grid-template-columns:minmax(0,1fr)}}
+.subj{display:grid;grid-template-columns:minmax(0,1fr) 110px 52px;gap:4px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-faint);font-size:14px}
+.subj .nm{min-width:0;overflow-wrap:anywhere}
+.subj .nm small{display:block;color:var(--muted);font-size:12px}
+.subj .pct{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.subj .meter{margin:0}
+.subj .meter i.lo{background:var(--again)}.subj .meter i.mid{background:var(--hard)}.subj .meter i.hi{background:var(--good)}
+.leech-text{width:100%;min-height:120px;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:5px;color:var(--fg);padding:8px;font:13px var(--f-mono)}
+/* break screen */
+#break{position:fixed;inset:0;z-index:60;background:rgba(3,7,11,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:20px}
+#break .clock{font:600 clamp(64px,14vw,140px)/1 var(--f-mono);color:var(--line);text-shadow:0 0 30px var(--line-dim);font-variant-numeric:tabular-nums}
+#break p{color:var(--muted);max-width:40ch;margin:0}
+#break .air{flex:none;min-width:240px}
+
 /* ---------- dock ---------- */
 .dock{width:min(100%,1100px);margin-inline:auto}
 .dock-row{display:flex;gap:10px}
@@ -200,7 +232,7 @@ button{cursor:pointer}
 #camhud video{opacity:.45}
 #camhud .lbl{position:absolute;left:6px;top:4px;font:500 10px var(--f-mono);letter-spacing:.12em;color:var(--line)}
 #camhud.small{width:96px}
-#reticle{position:fixed;left:0;top:0;width:60px;height:60px;margin:-30px 0 0 -30px;z-index:50;pointer-events:none;will-change:transform}
+#reticle{position:fixed;left:0;top:0;width:60px;height:60px;margin:-30px 0 0 -30px;z-index:70;pointer-events:none;will-change:transform}
 #reticle svg{width:100%;height:100%;overflow:visible}
 .r-ring{fill:none;stroke:var(--line);stroke-width:1.5;opacity:.7}
 .r-dwell{fill:none;stroke:var(--good);stroke-width:3;stroke-dasharray:138.2;stroke-dashoffset:138.2;transform:rotate(-90deg);transform-origin:30px 30px}
@@ -238,6 +270,7 @@ button{cursor:pointer}
     <nav class="tabs" aria-label="Telas">
       <button data-view="cards" class="tab" aria-current="true">Cards</button>
       <button data-view="pdf" class="tab">PDF</button>
+      <button data-view="stats" class="tab">Estatísticas</button>
       <button data-view="lib" class="tab">Biblioteca</button>
     </nav>
     <div class="stats" id="stats" title="Novos · Aprendendo · Revisar">
@@ -271,6 +304,32 @@ button{cursor:pointer}
         <canvas id="pdf-canvas"></canvas>
         <div class="empty" id="pdf-empty"><strong>Nenhum PDF aberto</strong><span>Abra um arquivo na Biblioteca. Depois é só dizer “próxima” ou passar a mão no ar.</span>
           <label class="btn primary">Abrir PDF<input type="file" id="in-pdf2" accept="application/pdf,.pdf" hidden></label></div>
+      </div>
+    </section>
+
+    <section id="view-stats" class="view" hidden>
+      <div class="stats-page">
+        <div class="deckline"><span>Baralho <b id="stats-deck">—</b></span><span>troque de baralho na Biblioteca</span></div>
+        <div class="tiles" id="stats-tiles"></div>
+        <h2>Respostas por dia · últimos 30 dias</h2>
+        <div class="chart" id="stats-chart"></div>
+        <div class="stats-cols">
+          <div>
+            <h2>Acerto por matéria · 30 dias</h2>
+            <p class="note">Da mais fraca pra mais forte. Só conta matéria com pelo menos 5 respostas.</p>
+            <div id="stats-subjects"></div>
+            <div class="sync-row"><button class="btn primary" id="study-weak">Estudar as 3 mais fracas</button></div>
+          </div>
+          <div>
+            <h2>Cards que você erra sempre</h2>
+            <p class="note" id="leech-note"></p>
+            <div class="sync-row"><button class="btn primary" id="study-leech">Estudar esses</button><button class="btn" id="copy-leech">Copiar lista pro Claude</button></div>
+            <textarea id="leech-text" class="leech-text" readonly hidden></textarea>
+            <h2>Erros de hoje</h2>
+            <p class="note" id="errors-note"></p>
+            <div class="sync-row"><button class="btn primary" id="study-errors">Revisar erros de hoje</button></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -314,7 +373,9 @@ button{cursor:pointer}
           <div class="setting"><label for="set-swipe">Passar a mão pra virar<small>Mão aberta passando de lado: vira página do PDF ou mostra a resposta.</small></label><input type="checkbox" id="set-swipe"></div>
           <div class="setting"><label for="set-reach">Alcance da mão<small>Menor = mexe menos a mão pra cruzar a tela inteira.</small></label><input type="range" id="set-reach" min="0.35" max="0.95" step="0.05"></div>
           <div class="setting"><label for="set-pinch">Sensibilidade da pinça<small>Pra esquerda: só clica com os dedos bem encostados. Pra direita: clica com menos esforço.</small></label><input type="range" id="set-pinch" min="0.12" max="0.32" step="0.02"></div>
-          <div class="setting"><label for="set-new">Cards novos por dia</label><input type="number" id="set-new" min="0" max="999"></div>
+          <div class="setting"><label for="set-new">Cards novos por dia<small>Num baralho com data de prova, o app calcula sozinho.</small></label><input type="number" id="set-new" min="0" max="999"></div>
+          <div class="setting"><label for="set-retention">Retenção desejada: <span id="retention-val">90%</span><small>Chance de lembrar na hora da revisão. Mais alto = revisões mais frequentes.</small></label><input type="range" id="set-retention" min="0.85" max="0.95" step="0.01"></div>
+          <div class="setting"><label for="set-pomodoro">Pausa a cada 25 minutos<small>Pergunta se quer continuar; sem resposta, faz 5 minutos de pausa e te chama de volta.</small></label><input type="checkbox" id="set-pomodoro"></div>
           <div class="setting"><label for="set-cam">Mostrar imagem da câmera</label><input type="checkbox" id="set-cam"></div>
           <div class="setting"><label for="set-invert">PDF no modo escuro</label><input type="checkbox" id="set-invert"></div>
         </div>
@@ -322,10 +383,11 @@ button{cursor:pointer}
           <h2>Comandos de voz</h2>
           <dl class="cmds">
             <dt>mostrar · virar</dt><dd>revela a resposta</dd>
-            <dt>errei · de novo</dt><dd>nota 1, volta em 1 minuto</dd>
-            <dt>difícil</dt><dd>nota 2</dd>
-            <dt>bom · acertei</dt><dd>nota 3</dd>
-            <dt>fácil</dt><dd>nota 4</dd>
+            <dt>errei · não sei</dt><dd>Errei: volta em 10 minutos</dd>
+            <dt>dúvida · chutei</dt><dd>Dúvida: lembrou pela metade</dd>
+            <dt>acertei · bom</dt><dd>Acertei, mas com alguma dúvida</dd>
+            <dt>certeza · fácil</dt><dd>Certeza: sabia sem hesitar</dd>
+            <dt>continuar · pausa</dt><dd>responde à pergunta dos 25 minutos</dd>
             <dt>um · dois · três · quatro</dt><dd>mesmas notas, por número</dd>
             <dt>desfazer</dt><dd>volta o último card</dd>
             <dt>arquivar · apagar</dt><dd>tira o card da fila; depois diga “sim” pra confirmar ou “cancelar”</dd>
@@ -354,13 +416,13 @@ button{cursor:pointer}
     </div>
     <div class="dock-row" id="dock-grades" hidden>
       <button class="air g1" data-grade="1" data-air><b>Errei</b><small id="iv1"></small></button>
-      <button class="air g2" data-grade="2" data-air><b>Difícil</b><small id="iv2"></small></button>
-      <button class="air g3" data-grade="3" data-air><b>Bom</b><small id="iv3"></small></button>
-      <button class="air g4" data-grade="4" data-air><b>Fácil</b><small id="iv4"></small></button>
+      <button class="air g2" data-grade="2" data-air><b>Dúvida</b><small id="iv2"></small></button>
+      <button class="air g3" data-grade="3" data-air><b>Acertei</b><small id="iv3"></small></button>
+      <button class="air g4" data-grade="4" data-air><b>Certeza</b><small id="iv4"></small></button>
     </div>
     <div class="dock-row" id="dock-confirm" hidden>
-      <button class="air g1" id="btn-confirm" data-air><b id="confirm-label">Arquivar</b><small>“sim” · “confirmar”</small></button>
-      <button class="air" id="btn-cancel" data-air><b>Cancelar</b><small>“não” · “cancelar”</small></button>
+      <button class="air g1" id="btn-confirm" data-air><b id="confirm-label">Arquivar</b><small id="confirm-hint"></small></button>
+      <button class="air" id="btn-cancel" data-air><b id="cancel-label">Cancelar</b><small id="cancel-hint"></small></button>
     </div>
     <div class="dock-row" id="dock-done" hidden>
       <button class="air" id="btn-more" data-air><b>+10 novos</b><small>estudar mais hoje</small></button>
@@ -378,6 +440,12 @@ button{cursor:pointer}
   </footer>
 </div>
 
+<div id="break" hidden>
+  <span class="brand">PAUSA</span>
+  <div class="clock" id="break-clock">5:00</div>
+  <p>Levante, alongue e olhe pra longe. Eu te chamo quando acabar.</p>
+  <button class="air" id="btn-break-end" data-air><b>Voltar agora</b><small>“voltar”</small></button>
+</div>
 <div id="camhud" hidden><video id="cam" playsinline muted></video><canvas id="cam-overlay" width="320" height="240"></canvas><span class="lbl">RASTREIO</span></div>
 <div id="reticle" hidden><svg viewBox="0 0 60 60" aria-hidden="true"><circle cx="30" cy="30" r="22" class="r-ring"/><circle cx="30" cy="30" r="22" class="r-dwell" id="r-dwell"/><circle cx="30" cy="30" r="3" class="r-dot"/><path d="M30 0v10M30 50v10M0 30h10M50 30h10" class="r-tick"/></svg></div>
 <div id="hud-log" aria-live="polite"></div>
@@ -435,7 +503,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
+  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, pomodoro: true, retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -452,28 +520,66 @@ function log(text, kind = '') {
   setTimeout(() => el.remove(), kind === 'warn' ? 5700 : 3100);
 }
 
-/* ================= scheduling (Anki-style SM-2) ================= */
-const STEPS = [1 * MIN, 10 * MIN];
-function answer(prev, g, now) {
+/* ================= scheduling: FSRS-5 (the algorithm Anki uses since 23.10) =================
+   Each card keeps a memory model: S = stability in days (how long until recall drops to 90%),
+   D = difficulty 1..10. Grades: 1 Errei · 2 Dúvida · 3 Acertei · 4 Certeza.
+   A wrong answer comes back in 10 minutes; any other answer goes straight to a day-based interval
+   (for a first answer: about 1 day, 3 days and 2 weeks). */
+const FSRS_W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
+const DECAY = -0.5, FACTOR = 19 / 81, RETRY = 10 * MIN;
+const clampD = d => Math.min(10, Math.max(1, d));
+const retrievability = (days, s) => Math.pow(1 + FACTOR * days / s, DECAY);
+const initDifficulty = g => clampD(FSRS_W[4] - Math.exp(FSRS_W[5] * (g - 1)) + 1);
+function nextDifficulty(d, g) {
+  const damped = d - FSRS_W[6] * (g - 3) * (10 - d) / 9;
+  return clampD(FSRS_W[7] * initDifficulty(4) + (1 - FSRS_W[7]) * damped);
+}
+function nextStability(s, d, r, g) {
+  const w = FSRS_W;
+  if (g === 1) return Math.min(s, w[11] * Math.pow(d, -w[12]) * (Math.pow(s + 1, w[13]) - 1) * Math.exp(w[14] * (1 - r)));
+  return s * (1 + Math.exp(w[8]) * (11 - d) * Math.pow(s, -w[9]) * (Math.exp(w[10] * (1 - r)) - 1) * (g === 2 ? w[15] : 1) * (g === 4 ? w[16] : 1));
+}
+const sameDayStability = (s, g) => s * Math.exp(FSRS_W[17] * (g - 3 + FSRS_W[18]));
+function intervalFor(s) { // days until recall probability falls to the desired retention
+  const r = S.settings.retention || 0.9;
+  return Math.min(36500, Math.max(1, Math.round(s / FACTOR * (Math.pow(r, 1 / DECAY) - 1))));
+}
+// exam mode: nothing is scheduled past the exam; long intervals are spread over the days left
+function examDaysLeft(name) {
+  const e = S.settings.exams && S.settings.exams[name];
+  if (!e || !e.date) return null;
+  const left = Math.ceil((new Date(e.date + 'T12:00:00').getTime() - Date.now()) / DAY);
+  return left > 0 ? left : null;
+}
+const currentDeckName = () => (S.decks.find(d => d.id === S.deckId) || {}).name || '';
+function capForExam(ivl, id) {
+  const left = examDaysLeft(currentDeckName());
+  if (!left || ivl < left) return ivl;
+  const spread = 0.5 + 0.5 * (parseInt(fnv(id || ''), 36) % 1000) / 1000;
+  return Math.max(1, Math.floor((left - 1) * spread));
+}
+function answer(prev, g, now, id) {
   const p = { ...(prev || { s: 'new' }) };
-  if (p.s === 'review') {
-    const ivl = p.ivl || 1, ease = p.ease || 2.5;
-    if (g === 1) { p.lapses = (p.lapses || 0) + 1; p.ease = Math.max(1.3, ease - 0.2); p.ivl = Math.max(1, Math.round(ivl * 0.5)); p.s = 'relearn'; p.step = 1; p.due = now + STEPS[1]; }
-    else if (g === 2) { p.ease = Math.max(1.3, ease - 0.15); p.ivl = Math.max(ivl + 1, Math.round(ivl * 1.2)); p.due = now + p.ivl * DAY; }
-    else if (g === 3) { p.ivl = Math.max(ivl + 1, Math.round(ivl * ease)); p.due = now + p.ivl * DAY; }
-    else { p.ease = ease + 0.15; p.ivl = Math.max(ivl + 2, Math.round(ivl * ease * 1.3)); p.due = now + p.ivl * DAY; }
+  if (p.s === 'new' || p.s == null) { p.S = FSRS_W[g - 1]; p.D = initDifficulty(g); }
+  else {
+    if (p.S == null) { // scheduled before FSRS (older progress or an Anki import): estimate its memory
+      p.S = Math.max(0.5, p.ivl || 1);
+      p.D = clampD(5 + (2.5 - (p.ease || 2.5)) * 4);
+      p.last = p.last || (p.s === 'review' ? p.due - (p.ivl || 1) * DAY : now);
+    }
+    const elapsed = Math.max(0, (now - (p.last || now)) / DAY);
+    p.S = elapsed < 1 ? sameDayStability(p.S, g) : nextStability(p.S, p.D, retrievability(elapsed, p.S), g);
+    p.D = nextDifficulty(p.D, g);
+  }
+  p.S = Math.max(0.1, p.S); p.last = now;
+  if (g === 1) {
+    if (p.s === 'review') p.lapses = (p.lapses || 0) + 1;
+    p.s = p.s === 'review' || p.s === 'relearn' ? 'relearn' : 'learn';
+    p.due = now + RETRY;
   } else {
-    const relearn = p.s === 'relearn';
-    let step = p.s === 'new' ? 0 : (p.step || 0);
-    if (p.s === 'new') { p.s = 'learn'; p.ease = p.ease || 2.5; }
-    if (g === 1) { step = 0; p.due = now + STEPS[0]; }
-    else if (g === 2) { p.due = now + (step === 0 ? (STEPS[0] + STEPS[1]) / 2 : STEPS[step]); }
-    else if (g === 3) {
-      step++;
-      if (step >= STEPS.length) { p.s = 'review'; p.ivl = relearn ? Math.max(1, p.ivl || 1) : 1; p.due = now + p.ivl * DAY; }
-      else p.due = now + STEPS[step];
-    } else { p.s = 'review'; p.ivl = relearn ? Math.max(1, p.ivl || 1) + 1 : 4; p.due = now + p.ivl * DAY; }
-    p.step = step;
+    p.s = 'review';
+    p.ivl = capForExam(intervalFor(p.S), id);
+    p.due = now + p.ivl * DAY;
   }
   p.reps = (p.reps || 0) + 1;
   return p;
@@ -491,6 +597,18 @@ const todayKey = () => { const d = new Date(Date.now() - 4 * HOUR); return d.get
 function endOfDay() { const d = new Date(Date.now() - 4 * HOUR); d.setHours(28, 0, 0, 0); return d.getTime(); } // day rolls over at 4h, like Anki
 function ensureDaily() { if (!S.daily || S.daily.date !== todayKey()) S.daily = { date: todayKey(), new: {}, extra: {} }; }
 const newLimit = id => S.settings.newPerDay + (S.daily.extra[id] || 0);
+// with an exam date, new cards per day are whatever it takes to see them all a week before the exam
+function examPlan(deckId, freshAtDayStart) {
+  const left = examDaysLeft((S.decks.find(d => d.id === deckId) || {}).name);
+  if (!left) return null;
+  return { left, perDay: left > 7 ? Math.ceil(freshAtDayStart / (left - 7)) : 0 };
+}
+function recallNow(p, now) {
+  if (!p || p.S == null || !p.last) return p && p.due ? Math.min(1, Math.max(0, 1 - (now - p.due) / (30 * DAY))) : 1;
+  return retrievability(Math.max(0, (now - p.last) / DAY), p.S);
+}
+// cards you keep getting wrong
+const isLeech = p => !!p && ((p.lapses || 0) >= 4 || (p.miss || 0) >= 5);
 
 function queue(cards, prog, deckId) {
   ensureDaily();
@@ -515,10 +633,14 @@ function queue(cards, prog, deckId) {
   const dayStart = eod - DAY;
   let newToday = 0;
   for (const id in prog) if ((prog[id].first || 0) >= dayStart) newToday++;
-  const newLeft = Math.max(0, newLimit(deckId) - newToday);
+  const plan = examPlan(deckId, fresh.length + newToday);
+  // final exam week: the reviews you are most likely to have forgotten come first
+  if (plan && plan.left <= 7) rev.sort((a, b) => recallNow(prog[a.id], now) - recallNow(prog[b.id], now));
+  const newLeft = Math.max(0, (plan ? plan.perDay + (S.daily.extra[deckId] || 0) : newLimit(deckId)) - newToday);
   const freshToday = fresh.slice(0, newLeft);
   return {
     order: [...learnNow, ...rev, ...freshToday, ...learnLater.filter(c => prog[c.id].due <= now + 20 * MIN)],
+    plan,
     counts: { n: freshToday.length, l: learnNow.length + learnLater.filter(c => prog[c.id].due <= eod).length, r: rev.length },
     nextDue: learnLater.length ? prog[learnLater[0].id].due : null,
     freshLeft: fresh.length - freshToday.length,
@@ -550,12 +672,51 @@ async function openDeck(id, filter) {
   S.prog = await DB.get('prog:' + id) || {};
   S.filter = filter != null ? filter : await DB.get('filter:' + id) || '';
   S.undo = null;
-  DB.set('lastDeck', id); DB.set('filter:' + id, S.filter);
-  $('#deck-name').textContent = (S.decks.find(d => d.id === id)?.name || '—') + (S.filter ? ' › ' + S.filter.split('::').pop() : '');
+  DB.set('lastDeck', id); DB.set('filter:' + id, S.filter.startsWith('@') ? '' : S.filter); // focus modes are one-off
+  $('#deck-name').textContent = (S.decks.find(d => d.id === id)?.name || '—') + (S.filter ? ' › ' + (SPECIAL_FILTERS[S.filter] || S.filter.split('::').pop()) : '');
   showCard();
 }
 // subdeck filter: "Lei Seca" matches "Lei Seca" and everything under "Lei Seca::"
 const inFilter = (c, f) => !f || c.sub === f || (c.sub || '').startsWith(f + '::');
+// study modes that pick cards by performance instead of by subdeck
+const SPECIAL_FILTERS = { '@weak': 'matérias mais fracas', '@leech': 'cards que você erra sempre', '@errors': 'erros de hoje' };
+const lastAnswer = p => (p && p.h && p.h.length ? p.h[p.h.length - 1] : null);
+function currentQueue() {
+  const f = S.filter;
+  if (f === '@errors' || f === '@leech') {
+    // a focused round: every card in the set, until you get it right today (regardless of due date)
+    const day0 = (endOfDay() - DAY) / 1000;
+    const order = S.cards.filter(c => {
+      const p = S.prog[c.id];
+      if (!p || p.s === 'susp' || p.s === 'deleted') return false;
+      const last = lastAnswer(p);
+      if (f === '@errors') return !!last && last[1] === 1 && last[0] >= day0;
+      return isLeech(p) && !(last && last[0] >= day0 && last[1] > 1);
+    });
+    return { order, counts: { n: 0, l: 0, r: order.length }, nextDue: null, freshLeft: 0, focused: true };
+  }
+  if (f === '@weak') {
+    const weak = new Set(subjectStats(S.cards, S.prog).filter(s => s.answers >= 5).slice(0, 3).map(s => s.key));
+    return queue(S.cards.filter(c => weak.has(c.sub || '')), S.prog, S.deckId);
+  }
+  return queue(f ? S.cards.filter(c => inFilter(c, f)) : S.cards, S.prog, S.deckId);
+}
+// accuracy per subdeck over the last 30 days, weakest first
+function subjectStats(cards, prog) {
+  const since = Date.now() / 1000 - 30 * 86400, m = new Map();
+  for (const c of cards) {
+    const k = c.sub || '';
+    if (!m.has(k)) m.set(k, { key: k, label: k ? k.split('::').pop() : 'Baralho principal', parent: k.split('::').slice(0, -1).join(' › '), total: 0, seen: 0, answers: 0, correct: 0, leeches: 0 });
+    const s = m.get(k), p = prog[c.id];
+    if (p && (p.s === 'susp' || p.s === 'deleted')) continue;
+    s.total++;
+    if (p && p.s !== 'new') s.seen++;
+    if (isLeech(p)) s.leeches++;
+    for (const [t, g] of (p && p.h) || []) if (t >= since) { s.answers++; if (g > 1) s.correct++; }
+  }
+  return [...m.values()].map(s => ({ ...s, acc: s.answers ? s.correct / s.answers : null }))
+    .sort((a, b) => (a.acc == null ? 2 : a.acc) - (b.acc == null ? 2 : b.acc));
+}
 function subdeckOptions(cards) {
   const counts = new Map();
   for (const c of cards) {
@@ -567,12 +728,12 @@ function subdeckOptions(cards) {
 }
 
 /* ================= card view ================= */
-const GRADE_LABEL = { 1: 'Errei', 2: 'Difícil', 3: 'Bom', 4: 'Fácil' };
+const GRADE_LABEL = { 1: 'Errei', 2: 'Dúvida', 3: 'Acertei', 4: 'Certeza' };
 function setDock() {
   const cards = S.view === 'cards', pdf = S.view === 'pdf';
   $('#dock').hidden = !(cards || pdf);
-  const asking = cards && !!S.pending;
-  $('#dock-pdf').hidden = !pdf;
+  const asking = (cards || pdf) && !!S.pending;
+  $('#dock-pdf').hidden = !pdf || asking;
   $('#dock-confirm').hidden = !asking;
   $('#dock-reveal').hidden = !(cards && S.cur && !S.revealed) || asking;
   $('#dock-grades').hidden = !(cards && S.cur && S.revealed) || asking;
@@ -580,24 +741,33 @@ function setDock() {
   $('#btn-archive').hidden = $('#btn-delete').hidden = !(cards && S.cur);
 }
 
+/* a yes/no question in the dock, answered by voice, hand or tap; silence runs onTimeout */
+function ask({ kind, yes, no, yesHint, noHint, wait, onYes, onNo, onTimeout }) {
+  clearTimeout(S.pending && S.pending.timer);
+  S.pending = { kind, onYes, onNo, timer: setTimeout(() => { const p = S.pending; S.pending = null; setDock(); (onTimeout || onNo)(true, p); }, wait) };
+  $('#btn-confirm').classList.toggle('g1', kind === 'archive' || kind === 'delete'); // red only for destructive answers
+  $('#btn-confirm').classList.toggle('reveal', !(kind === 'archive' || kind === 'delete'));
+  $('#confirm-label').textContent = yes; $('#confirm-hint').textContent = yesHint;
+  $('#cancel-label').textContent = no; $('#cancel-hint').textContent = noHint;
+  setDock();
+}
+function confirmPending() { const p = S.pending; if (!p) return; clearTimeout(p.timer); S.pending = null; setDock(); p.onYes(p); }
+function cancelPending() { const p = S.pending; if (!p) return; clearTimeout(p.timer); S.pending = null; setDock(); p.onNo(false, p); }
+
 /* archive (can be restored in the Library) or delete (gone for good) — both ask first */
 function askRemove(kind) {
-  if (!S.cur) return;
-  clearTimeout(S.pending?.timer);
-  S.pending = { kind, id: S.cur.id, timer: setTimeout(() => cancelPending(true), 12000) };
-  $('#confirm-label').textContent = kind === 'archive' ? 'Arquivar este card' : 'Apagar de vez';
-  setDock();
+  if (!S.cur || S.pending) return;
+  const id = S.cur.id;
+  ask({
+    kind, yes: kind === 'archive' ? 'Arquivar este card' : 'Apagar de vez', no: 'Cancelar',
+    yesHint: '“sim” · “confirmar”', noHint: '“não” · “cancelar”', wait: 12000,
+    onYes: () => removeCard(kind, id),
+    onNo: timedOut => log(timedOut ? '› sem confirmação, nada foi alterado' : '› cancelado'),
+  });
   log(kind === 'archive' ? '› arquivar este card? Diga “sim” ou “cancelar”' : '› apagar este card de vez? Diga “sim” ou “cancelar”', 'warn');
 }
-function cancelPending(timedOut) {
-  if (!S.pending) return;
-  clearTimeout(S.pending.timer); S.pending = null; setDock();
-  log(timedOut ? '› sem confirmação, nada foi alterado' : '› cancelado');
-}
-function confirmPending() {
-  const p = S.pending;
-  if (!p) return;
-  clearTimeout(p.timer); S.pending = null;
+function removeCard(kind, id) {
+  const p = { kind, id };
   const before = S.prog[p.id];
   S.undo = { id: p.id, before };
   // kept as a marker (not removed) so a re-import from Anki or another device can't bring it back
@@ -620,7 +790,7 @@ async function restoreArchived(deckId, ids) {
 function renderCounts(c) { $('#c-new').textContent = c.n; $('#c-learn').textContent = c.l; $('#c-rev').textContent = c.r; }
 function showCard() {
   clearTimeout(S.waitTimer);
-  const q = queue(S.filter ? S.cards.filter(c => inFilter(c, S.filter)) : S.cards, S.prog, S.deckId);
+  const q = currentQueue();
   renderCounts(q.counts);
   let card = q.order[0] || null;
   if (card && card.id === S.lastId && q.order.length > 1) card = q.order[1];
@@ -631,8 +801,9 @@ function showCard() {
     $('#face-q').hidden = true;
     const empty = $('#empty'); empty.hidden = false;
     if (!S.deckId) empty.innerHTML = '<strong>Nenhum baralho</strong><span>Importe um baralho na Biblioteca.</span>';
+    else if (q.focused) empty.innerHTML = `<strong>Rodada concluída</strong><span>Você acertou todos os ${S.filter === '@errors' ? 'erros de hoje' : 'cards que costuma errar'}. Volte ao baralho inteiro na Biblioteca ou nas Estatísticas.</span>`;
     else if (q.nextDue) {
-      empty.innerHTML = `<strong>Pausa</strong><span>Próximo card em ${fmtIn(q.nextDue - Date.now())}.</span>`;
+      empty.innerHTML = `<strong>Aguardando</strong><span>Próximo card em ${fmtIn(q.nextDue - Date.now())}.</span>`;
       S.waitTimer = setTimeout(showCard, Math.min(q.nextDue - Date.now() + 500, 30 * MIN));
     } else empty.innerHTML = `<strong>Tudo revisado por hoje</strong><span>${q.freshLeft ? q.freshLeft + ' cards novos ainda esperam. Diga “mais novos” ou use o botão abaixo.' : 'Esse baralho está em dia.'}</span>`;
     $('#card-state').textContent = '';
@@ -641,7 +812,7 @@ function showCard() {
     $('#face-q').innerHTML = card.front;
     $('#face-a').innerHTML = card.back;
     const p = S.prog[card.id];
-    $('#card-state').textContent = (card.sub ? card.sub.split('::').pop() + ' · ' : '') + (!p || p.s === 'new' ? 'novo' : p.s === 'review' ? 'revisão · ' + fmtIn((p.ivl || 1) * DAY) : 'aprendendo');
+    $('#card-state').textContent = (card.sub ? card.sub.split('::').pop() + ' · ' : '') + (!p || p.s === 'new' ? 'novo' : p.s === 'review' ? 'revisão · ' + fmtIn((p.ivl || 1) * DAY) : 'aprendendo') + (isLeech(p) ? ' · você erra sempre' : '');
     holo.scrollTop = 0;
     holo.classList.remove('in'); void holo.offsetWidth; holo.classList.add('in');
     if (S.settings.readAloud) speak(textOf(card.front));
@@ -656,7 +827,7 @@ function reveal() {
   if (S.cur.full) { $('#face-q').hidden = true; $('#holo').scrollTop = 0; }
   else { $('#divider').hidden = false; $('#divider').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   const now = Date.now(), p = S.prog[S.cur.id];
-  for (let g = 1; g <= 4; g++) $('#iv' + g).textContent = fmtIn(answer(p, g, now).due - now);
+  for (let g = 1; g <= 4; g++) $('#iv' + g).textContent = fmtIn(answer(p, g, now, S.cur.id).due - now);
   setDock();
   if (S.settings.readAloud) speak(answerText(S.cur));
 }
@@ -669,7 +840,11 @@ function grade(g) {
   if (!S.revealed) { reveal(); log('› resposta revelada, agora dê a nota'); return; }
   const c = S.cur, before = S.prog[c.id], wasNew = !before || before.s === 'new', now = Date.now();
   S.undo = { id: c.id, before };
-  S.prog[c.id] = { ...answer(before, g, now), at: now, first: wasNew ? now : before.first };
+  const next = answer(before, g, now, c.id);
+  // a short answer history per card (synced with it) feeds the statistics
+  const h = [...((before && before.h) || []), [Math.round(now / 1000), g]].slice(-12);
+  S.prog[c.id] = { ...next, at: now, first: wasNew ? now : before.first, h, n: (next.n || 0) + 1, miss: (next.miss || 0) + (g === 1 ? 1 : 0) };
+  Pomo.touch();
   DB.set('prog:' + S.deckId, S.prog);
   Sync.soon();
   log(`› ${GRADE_LABEL[g].toLowerCase()} · volta em ${fmtIn(S.prog[c.id].due - Date.now())}`);
@@ -708,8 +883,9 @@ function textOf(html) {
 function setView(v) {
   S.view = v;
   for (const t of $$('.tab')) t.setAttribute('aria-current', t.dataset.view === v ? 'true' : 'false');
-  $('#view-cards').hidden = v !== 'cards'; $('#view-pdf').hidden = v !== 'pdf'; $('#view-lib').hidden = v !== 'lib';
+  $('#view-cards').hidden = v !== 'cards'; $('#view-pdf').hidden = v !== 'pdf'; $('#view-lib').hidden = v !== 'lib'; $('#view-stats').hidden = v !== 'stats';
   if (v === 'lib') renderLib();
+  if (v === 'stats') renderStats();
   if (v === 'pdf' && PDF.doc) PDF.render();
   setDock();
 }
@@ -742,6 +918,19 @@ async function renderLib() {
       wrap.appendChild(sel);
       row.appendChild(wrap);
     }
+    const examRow = document.createElement('div');
+    examRow.className = 'deck-sub';
+    examRow.innerHTML = `<label for="exam-${d.id}">Data da prova</label><input type="date" id="exam-${d.id}"><span class="exam-plan"></span>`;
+    const examInput = examRow.querySelector('input');
+    examInput.value = (S.settings.exams[d.name] || {}).date || '';
+    examInput.onchange = () => {
+      S.settings.exams[d.name] = { date: examInput.value, at: Date.now() };
+      saveSettings(); Sync.soon();
+      if (d.id === S.deckId && !S.revealed) showCard();
+      renderLib();
+    };
+    if (q.plan) examRow.querySelector('.exam-plan').textContent = `faltam ${q.plan.left} dias · ${q.plan.perDay} novos por dia`;
+    row.appendChild(examRow);
     const archived = cards.filter(c => prog[c.id] && prog[c.id].s === 'susp');
     if (archived.length) {
       const box = document.createElement('details');
@@ -769,6 +958,120 @@ async function renderLib() {
     list.appendChild(row);
   }
 }
+/* ================= statistics ================= */
+async function renderStats() {
+  const deck = S.decks.find(d => d.id === S.deckId);
+  $('#stats-deck').textContent = deck ? deck.name : '—';
+  const dayStart = endOfDay() - DAY, dayOf = t => Math.floor((t * 1000 - dayStart) / DAY); // 0 = today, -1 = yesterday
+  // answers per day over every deck, so the streak counts any study
+  const perDay = new Map();
+  for (const d of S.decks) {
+    const prog = d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {};
+    for (const id in prog) for (const [t, g] of prog[id].h || []) {
+      const i = dayOf(t);
+      if (i < -90 || i > 0) continue;
+      const e = perDay.get(i) || { n: 0, ok: 0 };
+      e.n++; if (g > 1) e.ok++;
+      perDay.set(i, e);
+    }
+  }
+  const today = perDay.get(0) || { n: 0, ok: 0 };
+  let streak = 0;
+  for (let i = today.n ? 0 : -1; perDay.has(i); i--) streak++;
+  const full = queue(S.cards, S.prog, S.deckId);
+  let doneHere = 0;
+  for (const id in S.prog) for (const [t] of S.prog[id].h || []) if (dayOf(t) === 0) doneHere++;
+  const goal = doneHere + full.counts.n + full.counts.l + full.counts.r;
+  const seen = S.cards.filter(c => S.prog[c.id] && S.prog[c.id].s !== 'new').length;
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+  const tile = (k, v, s, meter) => `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${meter == null ? '' : `<div class="meter"><i style="width:${Math.min(100, Math.round(meter * 100))}%"></i></div>`}</div>`;
+  const plan = full.plan;
+  $('#stats-tiles').innerHTML =
+    tile('Meta de hoje', `${doneHere}<small style="font-size:16px;color:var(--muted)"> / ${goal}</small>`, goal > doneHere ? `faltam ${goal - doneHere} neste baralho` : 'meta cumprida', goal ? doneHere / goal : 1) +
+    tile('Hoje', today.n, today.n ? `respostas · ${pct(today.ok, today.n)} de acerto` : 'nenhuma resposta ainda') +
+    tile('Sequência', streak, streak === 1 ? 'dia estudando' : 'dias seguidos') +
+    (plan ? tile('Prova', plan.left, `dias · ${plan.perDay} novos por dia`) : tile('Prova', '—', 'defina a data na Biblioteca')) +
+    tile('Baralho visto', pct(seen, S.cards.length), `${seen} de ${S.cards.length} cards`, S.cards.length ? seen / S.cards.length : 0);
+  drawDailyChart(perDay);
+
+  const subjects = subjectStats(S.cards, S.prog), ranked = subjects.filter(s => s.answers >= 5);
+  const box = $('#stats-subjects');
+  box.textContent = '';
+  if (!ranked.length) box.innerHTML = '<p class="note">Responda alguns cards de cada matéria e o ranking aparece aqui.</p>';
+  for (const s of ranked) {
+    const row = document.createElement('div');
+    row.className = 'subj';
+    const level = s.acc < 0.7 ? 'lo' : s.acc < 0.85 ? 'mid' : 'hi';
+    row.innerHTML = `<span class="nm"></span><div class="meter"><i class="${level}" style="width:${Math.round(s.acc * 100)}%"></i></div><span class="pct">${Math.round(s.acc * 100)}%</span>`;
+    row.querySelector('.nm').innerHTML = `<small></small>`;
+    row.querySelector('.nm').prepend(document.createTextNode(s.label));
+    row.querySelector('.nm small').textContent = `${s.parent ? s.parent + ' · ' : ''}${s.answers} respostas · ${s.seen}/${s.total} vistos`;
+    box.appendChild(row);
+  }
+  $('#study-weak').disabled = !ranked.length;
+
+  const leeches = S.cards.filter(c => isLeech(S.prog[c.id]) && S.prog[c.id].s !== 'susp' && S.prog[c.id].s !== 'deleted');
+  $('#leech-note').textContent = leeches.length
+    ? `${leeches.length} card(s) errados 4 vezes ou mais. Copie a lista e me mande: eu reescrevo de outro jeito, com exemplo ou macete.`
+    : 'Nenhum por enquanto. Um card entra aqui quando você erra 4 vezes ou mais.';
+  $('#study-leech').disabled = $('#copy-leech').disabled = !leeches.length;
+  $('#copy-leech').onclick = () => {
+    const text = `Cards que eu erro sempre no HoloCards (${deck ? deck.name : ''}):\n\n` +
+      leeches.map((c, i) => `${i + 1}. ${textOf(c.front)}\n   Resposta: ${answerText(c)}`).join('\n\n');
+    const ta = $('#leech-text');
+    const fallback = () => { ta.hidden = false; ta.value = text; ta.focus(); ta.select(); log('› selecionei a lista: copie e cole na conversa'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => log('› lista copiada. Cole na conversa comigo.'), fallback);
+    else fallback();
+  };
+  const errorsToday = S.cards.filter(c => { const l = lastAnswer(S.prog[c.id]); return l && l[1] === 1 && dayOf(l[0]) === 0; }).length;
+  $('#errors-note').textContent = errorsToday ? `${errorsToday} card(s) que você errou hoje e ainda não acertou de novo.` : 'Nenhum erro pendente hoje.';
+  $('#study-errors').disabled = !errorsToday;
+}
+function drawDailyChart(perDay) {
+  const days = 30, W = 600, H = 170, top = 14, base = 146, left = 30, right = 6;
+  const vals = Array.from({ length: days }, (_, k) => perDay.get(k - days + 1) || { n: 0, ok: 0 });
+  const max = Math.max(5, ...vals.map(v => v.n));
+  const slot = (W - left - right) / days, bw = Math.max(2, slot - 2); // 2px gap between bars
+  const y = n => base - (n / max) * (base - top);
+  const bar = (x, h) => { // flat on the baseline, 4px rounded top
+    if (h <= 0) return '';
+    const r = Math.min(4, bw / 2, h), y0 = base - h;
+    return `<path class="bar" d="M${x},${base}V${y0 + r}Q${x},${y0} ${x + r},${y0}H${x + bw - r}Q${x + bw},${y0} ${x + bw},${y0 + r}V${base}Z"/>`;
+  };
+  let marks = '', hits = '';
+  vals.forEach((v, k) => {
+    const x = left + k * slot + 1;
+    marks += bar(x, base - y(v.n));
+    hits += `<rect class="hit" data-k="${k}" x="${left + k * slot}" y="${top}" width="${slot}" height="${base - top + 20}"/>`;
+  });
+  const box = $('#stats-chart');
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Respostas por dia nos últimos 30 dias">
+    <line x1="${left}" x2="${W - right}" y1="${y(max)}" y2="${y(max)}" style="stroke:var(--line-faint);stroke-width:1"/>
+    <line x1="${left}" x2="${W - right}" y1="${base}" y2="${base}" style="stroke:var(--line-dim);stroke-width:1"/>
+    <text x="${left - 6}" y="${y(max) + 4}" text-anchor="end" style="fill:var(--muted);font:11px var(--f-mono)">${max}</text>
+    <text x="${left - 6}" y="${base + 4}" text-anchor="end" style="fill:var(--muted);font:11px var(--f-mono)">0</text>
+    <text x="${left}" y="${H - 4}" style="fill:var(--muted);font:11px var(--f-mono)">30 dias atrás</text>
+    <text x="${W - right}" y="${H - 4}" text-anchor="end" style="fill:var(--muted);font:11px var(--f-mono)">hoje</text>
+    ${marks}${hits}</svg><div class="tip" hidden></div>`;
+  box.querySelectorAll('.bar').forEach(b => { b.style.fill = 'var(--line)'; });
+  box.querySelectorAll('.hit').forEach(h => { h.style.fill = 'transparent'; });
+  const tip = box.querySelector('.tip'), svg = box.querySelector('svg');
+  const show = e => {
+    const hit = e.target.closest && e.target.closest('.hit');
+    if (!hit) { tip.hidden = true; return; }
+    const k = +hit.dataset.k, v = vals[k], d = new Date(endOfDay() - DAY * (days - k));
+    tip.textContent = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${v.n} respostas${v.n ? ` · ${Math.round(100 * v.ok / v.n)}% acerto` : ''}`;
+    const r = svg.getBoundingClientRect(), bx = box.getBoundingClientRect();
+    tip.style.left = Math.min(bx.width - 80, Math.max(80, (left + (k + 0.5) * slot) / W * r.width + (r.left - bx.left))) + 'px';
+    tip.style.top = (y(v.n) / H * r.height + (r.top - bx.top) - 6) + 'px';
+    tip.hidden = false;
+  };
+  svg.addEventListener('pointermove', show);
+  svg.addEventListener('pointerdown', show);
+  svg.addEventListener('pointerleave', () => { tip.hidden = true; });
+}
+async function studyMode(filter) { if (!S.deckId) return; await openDeck(S.deckId, filter); setView('cards'); }
+
 function applyFont() { document.documentElement.style.setProperty('--fs', S.settings.fontScale); }
 function bigger() {
   if (S.view === 'pdf') return PDF.zoom(1.2);
@@ -823,9 +1126,10 @@ function stopSpeaking() { if ('speechSynthesis' in window) speechSynthesis.cance
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 // while a confirmation is pending only these two are listened for
 const CONFIRM_COMMANDS = [
-  ['confirm', /^(sim|confirmar|confirma|confirmo|confirmado|pode|isso|ok|okay)\b/],
-  ['cancel', /^(nao|cancelar|cancela|cancelado|deixa|esquece)\b/],
+  ['confirm', /^(sim|confirmar|confirma|confirmo|confirmado|pode|isso|ok|okay|continuar|continua|continuo|seguir|sigo|bora|vamos)\b/],
+  ['cancel', /^(nao|cancelar|cancela|cancelado|deixa|esquece|pausa|pausar|descansar|parar)\b/],
 ];
+const BREAK_COMMANDS = [['resume', /\b(voltar|volta|continuar|continua|bora|vamos|acabou)\b/]];
 const COMMANDS = [
   ['undo', /\b(desfazer|desfaz|desfaca)\b/],
   ['stop', /\b(parar|pare|silencio|chega|cala a boca)\b/],
@@ -835,9 +1139,9 @@ const COMMANDS = [
   // number words only count when said alone ("um" is also an article);
   // the extra one-word forms are how Safari often transcribes a short "fácil" or "virar"
   ['again', /\b(errei|errado|errada|de novo|nao sei|nao lembro|esqueci|outra vez)\b|^(nota )?(um|1)$/],
-  ['hard', /\b(dificil|dificel)\b|^(nota )?(dois|2)$/],
-  ['good', /\b(bom|boa|acertei|certo|certa|lembrei|sabia)\b|^(nota )?(tres|3)$/],
-  ['easy', /\b(facil|facim|facinho|moleza)\b|^(nota )?(quatro|4)$|^(fazio|facio|fasil|fase il|facil facil)$/],
+  ['easy', /\b(certeza|certeza absoluta|facil|facim|facinho|moleza)\b|^(nota )?(quatro|4)$|^(fazio|facio|fasil|fase il|facil facil)$/],
+  ['hard', /\b(duvida|duvidas|fiquei em duvida|chutei|mais ou menos|dificil|dificel)\b|^(nota )?(dois|2)$/],
+  ['good', /\b(acertei|acerto|bom|boa|certo|certa|lembrei|sabia)\b|^(nota )?(tres|3)$/],
   ['reveal', /\b(mostra|mostrar|mostre|virar|vira|vire|virou|resposta|revela|revelar|abre|abrir)\b|^(ver|ve|vi|bira|birar|beira)$/],
   ['next', /\b(proxima|proximo|avanca|avancar|seguinte|passa|passar)\b/],
   ['prev', /\b(volta|voltar|anterior|atras)\b/],
@@ -850,7 +1154,7 @@ const COMMANDS = [
   ['pdf', /\b(pdf|apostila|livro)\b/],
 ];
 function matchCommand(alts) {
-  const table = S.pending ? CONFIRM_COMMANDS : COMMANDS;
+  const table = Pomo.onBreak ? BREAK_COMMANDS : S.pending ? CONFIRM_COMMANDS : COMMANDS;
   for (const raw of alts) {
     const t = norm(raw);
     if (!t) continue;
@@ -860,7 +1164,9 @@ function matchCommand(alts) {
 }
 function runCommand(k) {
   const v = S.view;
+  Pomo.touch();
   switch (k) {
+    case 'resume': return Pomo.end();
     case 'confirm': return confirmPending();
     case 'cancel': return cancelPending();
     case 'archive': return v === 'cards' && askRemove('archive');
@@ -1081,7 +1387,7 @@ const Hands = (() => {
     if (hit) return hit;
     // magnetism: snap to a nearby big button so small hand jitter doesn't miss
     let best = null, bestD = 44;
-    for (const b of $$('[data-air]')) {
+    for (const b of $$(Pomo.onBreak ? '#break [data-air]' : '[data-air]')) {
       if (b.offsetParent === null) continue;
       const r = b.getBoundingClientRect();
       const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
@@ -1546,7 +1852,11 @@ const Sync = (() => {
       }
 
       // 2. progress, merged card by card in both directions; 3. decks this device has newer
-      const out = { v: 1, decks: { ...remote.decks }, prog: { ...remote.prog } };
+      // exam dates: the most recently set one wins
+      const exams = { ...(remote.exams || {}) };
+      for (const [k, e] of Object.entries(S.settings.exams || {})) if (!exams[k] || (e.at || 0) > (exams[k].at || 0)) exams[k] = e;
+      if (JSON.stringify(exams) !== JSON.stringify(S.settings.exams || {})) { S.settings.exams = exams; saveSettings(); touched = true; }
+      const out = { v: 1, decks: { ...remote.decks }, prog: { ...remote.prog }, exams };
       const files = {};
       for (const d of S.decks) {
         if (d.source === 'exemplo') continue;
@@ -1581,7 +1891,7 @@ const Sync = (() => {
       if (touched) {
         if (S.view === 'lib') renderLib();
         if (!S.revealed) showCard(); // a card answered on another device is no longer due here
-        else renderCounts(queue(S.filter ? S.cards.filter(c => inFilter(c, S.filter)) : S.cards, S.prog, S.deckId).counts);
+        else renderCounts(currentQueue().counts);
       }
     } catch (e) {
       ui('err', 'Não consegui sincronizar: ' + e.message);
@@ -1614,6 +1924,66 @@ const Sync = (() => {
     },
     disconnect() { S.settings.syncToken = ''; S.settings.gistId = ''; saveSettings(); ui('off', 'Desconectado. O progresso continua salvo neste aparelho.'); },
   };
+})();
+
+/* ================= 25-minute focus blocks =================
+   Counts only real study time (cards or PDF on screen, something done in the last 2 minutes).
+   At 25 minutes it asks; "continuar" starts another block, "pausa" or silence for a minute
+   starts a 5-minute break, and the app calls you back with a chime when it ends. */
+const Pomo = (() => {
+  const WORK = 25 * MIN, BREAK = 5 * MIN, ASK_WAIT = 60e3;
+  let active = 0, lastTick = Date.now(), lastInput = Date.now(), onBreak = false, breakEnd = 0, ac = null;
+  const mmss = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  function chime() {
+    try {
+      ac ||= new (window.AudioContext || window.webkitAudioContext)();
+      [660, 880].forEach((f, i) => {
+        const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + i * 0.22;
+        o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.start(t); o.stop(t + 0.4);
+      });
+    } catch (e) {}
+  }
+  function tick() {
+    const now = Date.now(), dt = Math.min(now - lastTick, 5000);
+    lastTick = now;
+    if (onBreak) {
+      const left = Math.max(0, breakEnd - now);
+      $('#break-clock').textContent = mmss(left);
+      if (!left) end(false);
+      return;
+    }
+    if (!S.settings.pomodoro || S.pending) return;
+    if (document.visibilityState === 'visible' && (S.view === 'cards' || S.view === 'pdf') && now - lastInput < 2 * MIN) active += dt;
+    if (active >= WORK) prompt();
+  }
+  function prompt() {
+    active = 0; chime();
+    ask({
+      kind: 'pomo', yes: 'Continuar', no: 'Pausa de 5 min', yesHint: '“continuar”', noHint: '“pausa” · ou não responda', wait: ASK_WAIT,
+      onYes: () => log('› mais 25 minutos. Bom estudo!'),
+      onNo: () => start(),
+    });
+    log('› 25 minutos de estudo. Quer continuar ou fazer uma pausa?', 'warn');
+    if (Voice.on || S.settings.readAloud) speak('Vinte e cinco minutos de estudo. Quer continuar ou fazer uma pausa?');
+  }
+  function start() {
+    onBreak = true; breakEnd = Date.now() + BREAK;
+    $('#break-clock').textContent = mmss(BREAK);
+    $('#break').hidden = false;
+    log('› pausa de 5 minutos');
+  }
+  function end(early) {
+    if (!onBreak) return;
+    onBreak = false; active = 0; lastInput = Date.now();
+    $('#break').hidden = true;
+    chime();
+    log(early ? '› de volta aos estudos' : '› pausa terminada. Vamos voltar!');
+    if (!early && (Voice.on || S.settings.readAloud)) speak('Pausa terminada. Vamos voltar?');
+  }
+  setInterval(tick, 1000);
+  return { touch() { lastInput = Date.now(); }, end: () => end(true), prompt, get onBreak() { return onBreak; } };
 })();
 
 /* ================= sample deck ================= */
@@ -1660,6 +2030,11 @@ function bindUI() {
   $('#btn-tolib').onclick = () => setView('lib');
   $('#btn-mic').onclick = () => { if (Voice.on) Voice.stop(); else { Voice.start(); requestWakeLock(); } };
   $('#btn-cam').onclick = () => { if (Hands.on) Hands.stop(); else { Hands.start(); requestWakeLock(); } };
+  $('#btn-break-end').onclick = () => Pomo.end();
+  document.addEventListener('pointerdown', () => Pomo.touch(), { passive: true });
+  $('#study-weak').onclick = () => studyMode('@weak');
+  $('#study-leech').onclick = () => studyMode('@leech');
+  $('#study-errors').onclick = () => studyMode('@errors');
   $('#btn-archive').onclick = () => askRemove('archive');
   $('#btn-delete').onclick = () => askRemove('delete');
   $('#btn-confirm').onclick = confirmPending;
@@ -1702,6 +2077,11 @@ function bindUI() {
   $('#pdf-wrap').classList.toggle('inverted', st.pdfInvert);
   const reach = $('#set-reach'); reach.value = st.reach; reach.oninput = () => { st.reach = +reach.value; saveSettings(); };
   const pinch = $('#set-pinch'); pinch.value = st.pinchSens; pinch.oninput = () => { st.pinchSens = +pinch.value; saveSettings(); };
+  const ret = $('#set-retention');
+  const showRet = () => { $('#retention-val').textContent = Math.round(st.retention * 100) + '%'; };
+  ret.value = st.retention; showRet();
+  ret.oninput = () => { st.retention = +ret.value; showRet(); saveSettings(); };
+  bindCheck('#set-pomodoro', 'pomodoro');
   const nw = $('#set-new'); nw.value = st.newPerDay; nw.onchange = () => { st.newPerDay = Math.max(0, Math.min(999, +nw.value || 0)); nw.value = st.newPerDay; saveSettings(); showCard(); };
 
   document.addEventListener('keydown', e => {
