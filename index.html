@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#03070b">
+<meta name="apple-mobile-web-app-title" content="HoloCards">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -66,6 +71,15 @@ button{cursor:pointer}
 .chip.on .dot{background:var(--good);opacity:1;box-shadow:0 0 8px var(--good);animation:pulse 1.6s ease-in-out infinite}
 .chip.busy .dot{background:var(--hard);opacity:1}
 .chip.err .dot{background:var(--again);opacity:1}
+.card-tools{display:flex;align-items:center;gap:8px;min-width:0}
+.mini{background:none;border:1px solid var(--line-dim);border-radius:4px;padding:3px 9px;font:500 12px var(--f-hud);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-height:30px}
+.mini.danger{border-color:rgba(255,95,120,.35);color:var(--again)}
+.mini.air-hover{border-color:var(--line);color:var(--fg)}
+.archived{grid-column:1/-1;font-size:14px;color:var(--muted)}
+.archived summary{cursor:pointer;padding:4px 0}
+.archived ul{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
+.archived li{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.archived li span{min-width:0;overflow-wrap:anywhere}
 .sync-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .sync-row input{flex:1;min-width:0;min-height:42px;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:5px;padding:8px 10px}
 .note a{color:var(--line)}
@@ -241,7 +255,7 @@ button{cursor:pointer}
 
   <main id="stage">
     <section id="view-cards" class="view">
-      <div class="deckline"><span>Baralho <b id="deck-name">—</b></span><span id="card-state"></span></div>
+      <div class="deckline"><span>Baralho <b id="deck-name">—</b></span><span class="card-tools"><span id="card-state"></span><button class="mini" id="btn-archive" data-air>Arquivar</button><button class="mini danger" id="btn-delete" data-air>Apagar</button></span></div>
       <article class="holo" id="holo">
         <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
         <div class="face q" id="face-q"></div>
@@ -294,6 +308,7 @@ button{cursor:pointer}
           </div>
           <p class="note" id="sync-status"></p>
           <h2>Ajustes</h2>
+          <div class="setting"><label for="set-shuffle">Ordem aleatória<small>Cards novos e revisões do dia embaralhados, em vez da ordem em que foram criados.</small></label><input type="checkbox" id="set-shuffle"></div>
           <div class="setting"><label for="set-read">Ler cards em voz alta<small>Lê a pergunta ao aparecer e a resposta ao revelar. Bom pra estudar de olhos fechados.</small></label><input type="checkbox" id="set-read"></div>
           <div class="setting"><label for="set-dwell">Clicar segurando a mira<small>Além da pinça: parar a mira 1 segundo em cima de um botão também clica.</small></label><input type="checkbox" id="set-dwell"></div>
           <div class="setting"><label for="set-swipe">Passar a mão pra virar<small>Mão aberta passando de lado: vira página do PDF ou mostra a resposta.</small></label><input type="checkbox" id="set-swipe"></div>
@@ -313,6 +328,7 @@ button{cursor:pointer}
             <dt>fácil</dt><dd>nota 4</dd>
             <dt>um · dois · três · quatro</dt><dd>mesmas notas, por número</dd>
             <dt>desfazer</dt><dd>volta o último card</dd>
+            <dt>arquivar · apagar</dt><dd>tira o card da fila; depois diga “sim” pra confirmar ou “cancelar”</dd>
             <dt>ler · repetir</dt><dd>lê o card (ou a página do PDF) em voz alta</dd>
             <dt>parar · silêncio</dt><dd>para a leitura</dd>
             <dt>próxima · voltar</dt><dd>página do PDF</dd>
@@ -341,6 +357,10 @@ button{cursor:pointer}
       <button class="air g2" data-grade="2" data-air><b>Difícil</b><small id="iv2"></small></button>
       <button class="air g3" data-grade="3" data-air><b>Bom</b><small id="iv3"></small></button>
       <button class="air g4" data-grade="4" data-air><b>Fácil</b><small id="iv4"></small></button>
+    </div>
+    <div class="dock-row" id="dock-confirm" hidden>
+      <button class="air g1" id="btn-confirm" data-air><b id="confirm-label">Arquivar</b><small>“sim” · “confirmar”</small></button>
+      <button class="air" id="btn-cancel" data-air><b>Cancelar</b><small>“não” · “cancelar”</small></button>
     </div>
     <div class="dock-row" id="dock-done" hidden>
       <button class="air" id="btn-more" data-air><b>+10 novos</b><small>estudar mais hoje</small></button>
@@ -415,7 +435,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, dwell: false, swipe: true, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
+  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -479,11 +499,18 @@ function queue(cards, prog, deckId) {
   for (const c of cards) {
     const p = prog[c.id];
     if (!p || p.s === 'new') fresh.push(c);
+    else if (p.s === 'susp' || p.s === 'deleted') continue;
     else if (p.s === 'review') { if (p.due <= eod) rev.push(c); }
     else (p.due <= now ? learnNow : learnLater).push(c);
   }
   const byDue = (a, b) => prog[a.id].due - prog[b.id].due;
-  learnNow.sort(byDue); rev.sort(byDue); learnLater.sort(byDue);
+  learnNow.sort(byDue); learnLater.sort(byDue);
+  if (S.settings.shuffle) {
+    // shuffled per day, not per render, so the queue doesn't jump around while studying
+    const day = todayKey(), key = new Map([...fresh, ...rev].map(c => [c.id, fnv(c.id + day)]));
+    const byKey = (a, b) => key.get(a.id) < key.get(b.id) ? -1 : 1;
+    fresh.sort(byKey); rev.sort(byKey);
+  } else rev.sort(byDue);
   // new cards started today are counted from the progress itself, so every synced device agrees
   const dayStart = eod - DAY;
   let newToday = 0;
@@ -544,10 +571,51 @@ const GRADE_LABEL = { 1: 'Errei', 2: 'Difícil', 3: 'Bom', 4: 'Fácil' };
 function setDock() {
   const cards = S.view === 'cards', pdf = S.view === 'pdf';
   $('#dock').hidden = !(cards || pdf);
+  const asking = cards && !!S.pending;
   $('#dock-pdf').hidden = !pdf;
-  $('#dock-reveal').hidden = !(cards && S.cur && !S.revealed);
-  $('#dock-grades').hidden = !(cards && S.cur && S.revealed);
-  $('#dock-done').hidden = !(cards && !S.cur);
+  $('#dock-confirm').hidden = !asking;
+  $('#dock-reveal').hidden = !(cards && S.cur && !S.revealed) || asking;
+  $('#dock-grades').hidden = !(cards && S.cur && S.revealed) || asking;
+  $('#dock-done').hidden = !(cards && !S.cur) || asking;
+  $('#btn-archive').hidden = $('#btn-delete').hidden = !(cards && S.cur);
+}
+
+/* archive (can be restored in the Library) or delete (gone for good) — both ask first */
+function askRemove(kind) {
+  if (!S.cur) return;
+  clearTimeout(S.pending?.timer);
+  S.pending = { kind, id: S.cur.id, timer: setTimeout(() => cancelPending(true), 12000) };
+  $('#confirm-label').textContent = kind === 'archive' ? 'Arquivar este card' : 'Apagar de vez';
+  setDock();
+  log(kind === 'archive' ? '› arquivar este card? Diga “sim” ou “cancelar”' : '› apagar este card de vez? Diga “sim” ou “cancelar”', 'warn');
+}
+function cancelPending(timedOut) {
+  if (!S.pending) return;
+  clearTimeout(S.pending.timer); S.pending = null; setDock();
+  log(timedOut ? '› sem confirmação, nada foi alterado' : '› cancelado');
+}
+function confirmPending() {
+  const p = S.pending;
+  if (!p) return;
+  clearTimeout(p.timer); S.pending = null;
+  const before = S.prog[p.id];
+  S.undo = { id: p.id, before };
+  // kept as a marker (not removed) so a re-import from Anki or another device can't bring it back
+  S.prog[p.id] = { ...(before || { s: 'new' }), s: p.kind === 'archive' ? 'susp' : 'deleted', prevS: before ? before.s : 'new', at: Date.now() };
+  DB.set('prog:' + S.deckId, S.prog);
+  Sync.soon();
+  log(p.kind === 'archive' ? '› card arquivado. Dá pra restaurar na Biblioteca, ou diga “desfazer”.' : '› card apagado. Diga “desfazer” se foi sem querer.');
+  S.lastId = p.id;
+  showCard();
+}
+async function restoreArchived(deckId, ids) {
+  const prog = deckId === S.deckId ? S.prog : await DB.get('prog:' + deckId) || {};
+  const now = Date.now();
+  for (const id of ids) { const p = prog[id]; if (p) prog[id] = { ...p, s: p.prevS && p.prevS !== 'susp' ? p.prevS : 'new', at: now }; }
+  await DB.set('prog:' + deckId, prog);
+  Sync.soon();
+  if (deckId === S.deckId && !S.revealed) showCard();
+  renderLib();
 }
 function renderCounts(c) { $('#c-new').textContent = c.n; $('#c-learn').textContent = c.l; $('#c-rev').textContent = c.r; }
 function showCard() {
@@ -674,6 +742,24 @@ async function renderLib() {
       wrap.appendChild(sel);
       row.appendChild(wrap);
     }
+    const archived = cards.filter(c => prog[c.id] && prog[c.id].s === 'susp');
+    if (archived.length) {
+      const box = document.createElement('details');
+      box.className = 'archived';
+      box.innerHTML = `<summary>${archived.length} card(s) arquivado(s)</summary><ul></ul><button class="btn">Restaurar todos</button>`;
+      const ul = box.querySelector('ul');
+      for (const c of archived.slice(0, 200)) {
+        const li = document.createElement('li');
+        const txt = document.createElement('span');
+        txt.textContent = textOf(c.front).slice(0, 120) || '(card sem texto)';
+        const b = document.createElement('button');
+        b.className = 'btn'; b.textContent = 'Restaurar';
+        b.onclick = () => restoreArchived(d.id, [c.id]);
+        li.append(txt, b); ul.appendChild(li);
+      }
+      box.querySelector('ul + button').onclick = () => restoreArchived(d.id, archived.map(c => c.id));
+      row.appendChild(box);
+    }
     study.onclick = async () => { await openDeck(d.id, sel ? sel.value : ''); setView('cards'); };
     del.onclick = () => {
       if (del.classList.contains('armed')) { deleteDeck(d.id); return; }
@@ -735,16 +821,24 @@ function stopSpeaking() { if ('speechSynthesis' in window) speechSynthesis.cance
 
 /* ================= voice commands ================= */
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+// while a confirmation is pending only these two are listened for
+const CONFIRM_COMMANDS = [
+  ['confirm', /^(sim|confirmar|confirma|confirmo|confirmado|pode|isso|ok|okay)\b/],
+  ['cancel', /^(nao|cancelar|cancela|cancelado|deixa|esquece)\b/],
+];
 const COMMANDS = [
   ['undo', /\b(desfazer|desfaz|desfaca)\b/],
   ['stop', /\b(parar|pare|silencio|chega|cala a boca)\b/],
   ['more', /\bmais (novos|cards|cartoes)\b/],
-  // number words only count when said alone ("um" is also an article)
-  ['again', /\b(errei|errado|de novo|nao sei|nao lembro|esqueci|outra vez)\b|^(nota )?(um|1)$/],
-  ['hard', /\bdificil\b|^(nota )?(dois|2)$/],
-  ['good', /\b(bom|boa|acertei|certo|lembrei)\b|^(nota )?(tres|3)$/],
-  ['easy', /\b(facil|facinho)\b|^(nota )?(quatro|4)$/],
-  ['reveal', /\b(mostra|mostrar|mostre|virar|vira|resposta|revela|revelar)\b/],
+  ['archive', /\b(arquivar|arquiva|arquive|arquivo)\b/],
+  ['delete', /\b(apagar|apaga|apague|deletar|delete|excluir|exclui|exclua)\b/],
+  // number words only count when said alone ("um" is also an article);
+  // the extra one-word forms are how Safari often transcribes a short "fácil" or "virar"
+  ['again', /\b(errei|errado|errada|de novo|nao sei|nao lembro|esqueci|outra vez)\b|^(nota )?(um|1)$/],
+  ['hard', /\b(dificil|dificel)\b|^(nota )?(dois|2)$/],
+  ['good', /\b(bom|boa|acertei|certo|certa|lembrei|sabia)\b|^(nota )?(tres|3)$/],
+  ['easy', /\b(facil|facim|facinho|moleza)\b|^(nota )?(quatro|4)$|^(fazio|facio|fasil|fase il|facil facil)$/],
+  ['reveal', /\b(mostra|mostrar|mostre|virar|vira|vire|virou|resposta|revela|revelar|abre|abrir)\b|^(ver|ve|vi|bira|birar|beira)$/],
   ['next', /\b(proxima|proximo|avanca|avancar|seguinte|passa|passar)\b/],
   ['prev', /\b(volta|voltar|anterior|atras)\b/],
   ['down', /\b(desce|descer|desca|rola|rolar)\b/],
@@ -756,16 +850,21 @@ const COMMANDS = [
   ['pdf', /\b(pdf|apostila|livro)\b/],
 ];
 function matchCommand(alts) {
+  const table = S.pending ? CONFIRM_COMMANDS : COMMANDS;
   for (const raw of alts) {
     const t = norm(raw);
     if (!t) continue;
-    for (const [k, re] of COMMANDS) if (re.test(t)) return k;
+    for (const [k, re] of table) if (re.test(t)) return k;
   }
   return null;
 }
 function runCommand(k) {
   const v = S.view;
   switch (k) {
+    case 'confirm': return confirmPending();
+    case 'cancel': return cancelPending();
+    case 'archive': return v === 'cards' && askRemove('archive');
+    case 'delete': return v === 'cards' && askRemove('delete');
     case 'reveal': if (v === 'cards') S.revealed ? null : (reveal(), pressFx($('#btn-reveal'))); return;
     case 'again': return v === 'cards' && grade(1);
     case 'hard': return v === 'cards' && grade(2);
@@ -831,7 +930,8 @@ const Voice = (() => {
       if (!want || paused) { ui('off'); return; }
       // a session that ends without ever starting is a refusal; stop instead of looping silently
       if (!started && ++failures >= 4) { giveUp('A voz não conseguiu iniciar neste navegador. Toque em Voz de novo.'); return; }
-      ui('busy'); clearTimeout(restartTimer); restartTimer = setTimeout(boot, 250);
+      // on iPhone each phrase ends the session, so the gap before listening again must be tiny
+      ui('busy'); clearTimeout(restartTimer); restartTimer = setTimeout(boot, IOS ? 40 : 250);
     };
     try { rec.start(); ui('busy'); }
     catch (e) { if (++failures >= 4) giveUp('A voz não conseguiu iniciar: ' + e.message); else restartTimer = setTimeout(boot, 500); }
@@ -1560,6 +1660,10 @@ function bindUI() {
   $('#btn-tolib').onclick = () => setView('lib');
   $('#btn-mic').onclick = () => { if (Voice.on) Voice.stop(); else { Voice.start(); requestWakeLock(); } };
   $('#btn-cam').onclick = () => { if (Hands.on) Hands.stop(); else { Hands.start(); requestWakeLock(); } };
+  $('#btn-archive').onclick = () => askRemove('archive');
+  $('#btn-delete').onclick = () => askRemove('delete');
+  $('#btn-confirm').onclick = confirmPending;
+  $('#btn-cancel').onclick = () => cancelPending();
   $('#btn-sync').onclick = () => Sync.run();
   $('#sync-now').onclick = () => Sync.run();
   $('#sync-off').onclick = () => Sync.disconnect();
@@ -1589,6 +1693,7 @@ function bindUI() {
 
   const st = S.settings;
   const bindCheck = (id, key, after) => { const el = $(id); el.checked = !!st[key]; el.onchange = () => { st[key] = el.checked; saveSettings(); after && after(); }; };
+  bindCheck('#set-shuffle', 'shuffle', () => { if (!S.revealed) showCard(); });
   bindCheck('#set-read', 'readAloud');
   bindCheck('#set-dwell', 'dwell');
   bindCheck('#set-swipe', 'swipe');
@@ -1602,6 +1707,7 @@ function bindUI() {
   document.addEventListener('keydown', e => {
     if (e.target.matches('input,textarea,select')) return;
     const k = e.key;
+    if (S.pending) { if (k === 'Enter') confirmPending(); else if (k === 'Escape') cancelPending(); return; }
     if (S.view === 'cards') {
       if ((k === ' ' || k === 'Enter') && !S.revealed) { e.preventDefault(); reveal(); }
       else if ((k === ' ' || k === 'Enter') && S.revealed) { e.preventDefault(); grade(3); }
@@ -1631,6 +1737,13 @@ async function init() {
   if (!Voice.supported) $('#btn-mic').title = 'Reconhecimento de voz indisponível neste navegador';
   Sync.ui('off', Sync.enabled ? '' : 'Ainda não conectado. Por enquanto o progresso fica só neste aparelho.');
   Sync.run();
+  if ('serviceWorker' in navigator && isSecureContext) {
+    navigator.serviceWorker.register('sw.js').then(() => {
+      // warm the cache with the import and PDF libraries so they also work offline later
+      setTimeout(() => [CDN.jszip, CDN.sql + 'sql-wasm.js', CDN.sql + 'sql-wasm.wasm', CDN.fzstd, CDN.pdf + 'pdf.min.js', CDN.pdf + 'pdf.worker.min.js']
+        .forEach(u => fetch(u).catch(() => {})), 6000);
+    }).catch(() => {});
+  }
 }
 init();
 </script>
