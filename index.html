@@ -1195,28 +1195,29 @@ const IOS_OTHER_BROWSER = IOS && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(navigator
 const VOICE_ERRORS = {
   'not-allowed': 'Microfone bloqueado para este site. Libere nas permissões do navegador e toque em Voz de novo.',
   'service-not-allowed': IOS ? 'O iPhone recusou o reconhecimento de voz. Ative Ajustes › Geral › Teclado › Ditado e toque em Voz de novo.' : 'O navegador recusou o reconhecimento de voz. Toque em Voz de novo.',
-  'audio-capture': 'Não consegui usar o microfone. Outro app pode estar usando, ou a câmera ocupou o áudio. Toque em Voz de novo.',
+  'audio-capture': 'O microfone não foi liberado. Feche apps que usam o microfone (ligação, gravador, WhatsApp de áudio) e toque em Voz de novo.',
   'network': 'O reconhecimento de voz precisa de internet.',
   'language-not-supported': 'Este aparelho não reconhece português por voz.',
 };
 const Voice = (() => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, want = false, paused = false, handled = new Set(), restartTimer = null, started = false, failures = 0;
+  let rec = null, want = false, paused = false, running = false, handled = new Set(), restartTimer = null, started = false, failures = 0, micBusy = 0;
   const ui = s => { const b = $('#btn-mic'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
-  function giveUp(msg) { want = false; clearTimeout(restartTimer); ui('off'); log(msg, 'warn'); }
-  function boot() {
-    if (!want || paused) return;
-    try { rec && rec.abort(); } catch (e) {}
+  function giveUp(msg) { want = false; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} ui('off'); log(msg, 'warn'); }
+  // One recognizer for the whole session, restarted after each phrase. Safari on iPhone keeps the
+  // microphone tied to the old object for a moment, so building a new one each time made the
+  // second phrase fail with "microphone in use".
+  function make() {
     rec = new SR();
     // Safari on iPhone drops long continuous sessions, so it listens one phrase at a time and restarts
     rec.lang = 'pt-BR'; rec.continuous = !IOS; rec.interimResults = true; rec.maxAlternatives = 3;
-    handled = new Set(); started = false;
-    rec.onstart = () => { started = true; failures = 0; ui('on'); };
+    rec.onstart = () => { running = true; started = true; failures = 0; handled = new Set(); ui('on'); };
     rec.onresult = e => {
+      micBusy = 0;
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const alts = [...r].map(a => a.transcript);
-        const key = i + ':' + (rec._gen || 0);
+        const key = String(i);
         if (handled.has(key)) continue;
         const words = norm(alts[0]).split(' ').filter(Boolean);
         // Short phrases fire on interim results so the response feels instant.
@@ -1229,18 +1230,31 @@ const Voice = (() => {
     };
     rec.onerror = e => {
       if (e.error === 'no-speech' || e.error === 'aborted') return; // silence or our own restart
+      // a busy microphone is usually momentary (the previous phrase or a spoken card still holds it): wait and retry
+      if (e.error === 'audio-capture' && ++micBusy <= 4) { restartDelay = 600 * micBusy; return; }
       if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(e.error)) giveUp(VOICE_ERRORS[e.error]);
       else log(VOICE_ERRORS[e.error] || 'Erro de voz: ' + e.error, 'warn');
     };
     rec.onend = () => {
-      if (!want || paused) { ui('off'); return; }
+      running = false;
+      if (!want || paused) { if (!want) ui('off'); return; }
       // a session that ends without ever starting is a refusal; stop instead of looping silently
-      if (!started && ++failures >= 4) { giveUp('A voz não conseguiu iniciar neste navegador. Toque em Voz de novo.'); return; }
-      // on iPhone each phrase ends the session, so the gap before listening again must be tiny
-      ui('busy'); clearTimeout(restartTimer); restartTimer = setTimeout(boot, IOS ? 40 : 250);
+      if (!started && !restartDelay && ++failures >= 4) { giveUp('A voz não conseguiu iniciar neste navegador. Toque em Voz de novo.'); return; }
+      ui('busy'); schedule(restartDelay || 250);
+      restartDelay = 0;
     };
+  }
+  let restartDelay = 0;
+  function schedule(ms) { clearTimeout(restartTimer); restartTimer = setTimeout(boot, ms); }
+  function boot() {
+    if (!want || paused || running) return;
+    if (!rec) make();
+    started = false;
     try { rec.start(); ui('busy'); }
-    catch (e) { if (++failures >= 4) giveUp('A voz não conseguiu iniciar: ' + e.message); else restartTimer = setTimeout(boot, 500); }
+    catch (e) {
+      if (/already|started/i.test(e.message)) return; // still running: nothing to do
+      if (++failures >= 4) giveUp('A voz não conseguiu iniciar: ' + e.message); else schedule(500);
+    }
   }
   return {
     supported: !!SR,
@@ -1248,11 +1262,12 @@ const Voice = (() => {
     start() {
       if (IOS_OTHER_BROWSER) { log('No iPhone, a voz só funciona no Safari. Abra o endereço pelo Safari.', 'warn'); return; }
       if (!SR) { log('Este navegador não reconhece voz. No Android use o Chrome; no iPhone, o Safari.', 'warn'); return; }
-      want = true; paused = false; failures = 0; boot(); log('› voz ativada. Diga “mostrar”, “bom”, “fácil”…');
+      want = true; paused = false; failures = 0; micBusy = 0; boot(); log('› voz ativada. Diga “mostrar”, “acertei”, “certeza”…');
     },
     stop() { want = false; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} ui('off'); log('› voz desligada'); },
     pause() { if (!want) return; paused = true; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} },
-    resume() { if (!want || !paused) return; paused = false; clearTimeout(restartTimer); restartTimer = setTimeout(boot, 350); },
+    // after the app speaks, give the iPhone time to hand the audio back to the microphone
+    resume() { if (!want || !paused) return; paused = false; schedule(IOS ? 700 : 350); },
   };
 })();
 
@@ -1262,7 +1277,7 @@ const Hands = (() => {
   let landmarker = null, stream = null, running = false, lastT = -1, raf = 0;
   const video = $('#cam'), overlay = $('#cam-overlay'), octx = overlay.getContext('2d');
   const ret = $('#reticle'), dwellRing = $('#r-dwell');
-  const P = { x: innerWidth / 2, y: innerHeight / 2, seen: false, seenAt: 0, lost: 0, pinch: false, pinchSince: 0, drag: null, hover: null, hoverSince: 0, cooldown: 0, hist: [], swipeCool: 0 };
+  const P = { x: innerWidth / 2, y: innerHeight / 2, seen: false, seenAt: 0, lost: 0, pinch: false, pinchSince: 0, pinchAt: 0, drag: null, hover: null, hoverSince: 0, cooldown: 0, hist: [], swipeCool: 0 };
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const ui = s => { const b = $('#btn-cam'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
 
@@ -1337,13 +1352,18 @@ const Hands = (() => {
     ret.style.transform = `translate(${P.x}px,${P.y}px)`;
 
     // pinch: fingers must stay closed ~150 ms, with the hand fairly still, before it counts as a click
-    const closeAt = S.settings.pinchSens, openAt = closeAt + 0.2;
+    // A small re-opening is enough to release: requiring a wide open hand left the pinch "stuck"
+    // after the first click, so the next pinches were silently ignored.
+    const closeAt = S.settings.pinchSens, openAt = closeAt + 0.08;
     if (!P.pinch) {
       if (pinchRatio < closeAt && now - P.seenAt > 500) {
         if (!P.pinchSince) { if (speed < 40) P.pinchSince = now; }
-        else if (now - P.pinchSince > 150) { P.pinch = true; P.pinchSince = 0; onPinchStart(now); }
+        else if (now - P.pinchSince > 150) { P.pinch = true; P.pinchSince = 0; P.pinchAt = now; onPinchStart(now); }
       } else P.pinchSince = 0;
-    } else if (pinchRatio > openAt) { P.pinch = false; P.drag = null; }
+    } else if (pinchRatio > openAt || (!P.drag && now - P.pinchAt > 1500 && pinchRatio > closeAt)) {
+      // also let go if fingers drift apart at all after a long hold that wasn't a drag
+      P.pinch = false; P.drag = null;
+    }
     ret.classList.toggle('pinch', P.pinch);
     if (P.drag) {
       const dy = P.y - P.drag.y; P.drag.y = P.y;
@@ -1376,7 +1396,7 @@ const Hands = (() => {
   }
   function onPinchStart(now) {
     const t = findTarget(P.x, P.y);
-    if (t && now > P.cooldown) { click(t); P.cooldown = now + 450; return; }
+    if (t && now > P.cooldown) { click(t); P.cooldown = now + 700; return; } // 700 ms keeps one pinch from counting twice
     const under = document.elementFromPoint(P.x, P.y);
     const scroller = under && under.closest('#holo,#pdf-wrap,#view-lib');
     if (scroller) P.drag = { el: scroller, y: P.y };
@@ -1407,7 +1427,7 @@ const Hands = (() => {
     document.body.appendChild(r); setTimeout(() => r.remove(), 600);
     el.click();
   }
-  return { start, stop, get on() { return running; } };
+  return { start, stop, get on() { return running; }, _feed: onHand }; // _feed: lets tests drive the gesture logic with synthetic landmarks
 })();
 function onSwipe(dir) {
   if (S.view === 'pdf') { PDF.go(dir === 'left' ? 1 : -1); log(dir === 'left' ? '› próxima página' : '› página anterior'); }
