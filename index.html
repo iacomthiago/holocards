@@ -1110,7 +1110,141 @@ function scrollStage(dir) {
 }
 
 /* ================= speech output ================= */
-const TTS = { voice: null, jaVoice: null, speaking: false };
+const TTS = { voice: null, jaVoice: null, speaking: false, gen: 0 };
+
+/* Natural neural voices (Piper, run inside the page with onnxruntime). The voice is downloaded once
+   (~60 MB) into the browser's storage and then works offline. Japanese runs still use the system voice. */
+const NEURAL_VOICES = {
+  'neural:faber': { name: 'Faber · neural', path: 'pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx' },
+  'neural:cadu': { name: 'Cadu · neural', path: 'pt/pt_BR/cadu/medium/pt_BR-cadu-medium.onnx' },
+  'neural:jeff': { name: 'Jeff · neural', path: 'pt/pt_BR/jeff/medium/pt_BR-jeff-medium.onnx' },
+};
+const Neural = (() => {
+  const HF = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/';
+  const ORT = 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/';
+  const PHON = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize';
+  let phon = null, printTo = null, session = null, config = null, readyKey = null, loading = null, loadingKey = null;
+  let actx = null, src = null, lock = Promise.resolve();
+  const wanted = () => S.settings.ttsVoice in NEURAL_VOICES;
+  function audio() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  // iPhone only lets a page start sound from a tap, so the player is unlocked on the first one
+  document.addEventListener('pointerdown', () => { if (wanted() || actx) audio(); }, { passive: true });
+
+  async function cached(url, onProgress) {
+    const cache = await caches.open('holocards-voices');
+    const hit = await cache.match(url);
+    if (hit) return hit.blob();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('download falhou (' + res.status + ')');
+    const total = +res.headers.get('Content-Length') || 0, reader = res.body.getReader(), chunks = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (onProgress && total) onProgress(got / total);
+    }
+    const blob = new Blob(chunks);
+    await cache.put(url, new Response(blob));
+    return blob;
+  }
+  async function load(key, onProgress) {
+    if (readyKey === key) return;
+    if (loading && loadingKey === key) return loading;
+    loadingKey = key;
+    loading = (async () => {
+      const v = NEURAL_VOICES[key];
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      await loadScript(ORT + 'ort.min.js');
+      ort.env.wasm.wasmPaths = ORT; ort.env.wasm.numThreads = 1;
+      const cfg = JSON.parse(await (await cached(HF + v.path + '.json')).text());
+      const model = await cached(HF + v.path, onProgress);
+      const sess = await ort.InferenceSession.create(await model.arrayBuffer(), { executionProviders: ['wasm'] });
+      if (!phon) {
+        await loadScript(PHON + '.js');
+        phon = await createPiperPhonemize({
+          print: line => { const f = printTo; printTo = null; if (f) f(line); },
+          printErr: () => {},
+          locateFile: f => f.endsWith('.wasm') ? PHON + '.wasm' : f.endsWith('.data') ? PHON + '.data' : f,
+        });
+      }
+      session = sess; config = cfg; readyKey = key;
+    })().finally(() => { loading = null; loadingKey = null; });
+    return loading;
+  }
+  // one synthesis at a time: the phonemizer reports through a single print callback
+  const serial = fn => (lock = lock.then(fn, fn));
+  function synth(text) {
+    return serial(async () => {
+      const ids = await new Promise((resolve, reject) => {
+        printTo = line => { try { resolve(JSON.parse(line).phoneme_ids); } catch (e) { reject(e); } };
+        try { phon.callMain(['-l', config.espeak.voice, '--input', JSON.stringify([{ text }]), '--espeak_data', '/espeak-ng-data']); }
+        catch (e) { printTo = null; reject(e); }
+      });
+      const inf = config.inference;
+      const feeds = {
+        input: new ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
+        input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
+        scales: new ort.Tensor('float32', Float32Array.from([inf.noise_scale, inf.length_scale / S.settings.ttsRate, inf.noise_w]), [3]),
+      };
+      if (config.num_speakers > 1) feeds.sid = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
+      const pcm = (await session.run(feeds)).output.data;
+      const c = audio(), buf = c.createBuffer(1, pcm.length, config.audio.sample_rate);
+      buf.getChannelData(0).set(pcm);
+      return buf;
+    });
+  }
+  function play(item) {
+    return new Promise(done => {
+      if (item.ja) {
+        const u = new SpeechSynthesisUtterance(item.ja);
+        u.lang = 'ja-JP'; if (TTS.jaVoice) u.voice = TTS.jaVoice; u.rate = 0.9 * S.settings.ttsRate;
+        u.onend = u.onerror = done; speechSynthesis.speak(u); return;
+      }
+      const c = audio();
+      src = c.createBufferSource(); src.buffer = item; src.connect(c.destination);
+      src.onended = done; src.start();
+    });
+  }
+  // Speaks sentence by sentence, preparing the next one while the current plays.
+  // Resolves 'fallback' when the voice isn't ready yet, so the caller uses the system voice meanwhile.
+  // long sentences are cut at commas so the first sound starts sooner on slower devices
+  function finer(parts) {
+    return parts.flatMap(p => {
+      if (p.ja || p.t.length <= 90) return [p];
+      const out = [];
+      for (const s of p.t.trim().split(/(?<=,)\s+/)) {
+        if (out.length && (s.length < 30 || out[out.length - 1].length < 30)) out[out.length - 1] += ' ' + s;
+        else out.push(s);
+      }
+      return out.map(t => ({ t, ja: false }));
+    });
+  }
+  async function speak(parts, gen) {
+    const key = S.settings.ttsVoice;
+    if (readyKey !== key) { load(key).catch(e => log('A voz neural não carregou (' + (e.message || e) + ').', 'warn')); return 'fallback'; }
+    parts = finer(parts);
+    const alive = () => gen === TTS.gen;
+    const prep = p => p.ja ? Promise.resolve({ ja: p.t }) : synth(p.t.trim());
+    try {
+      let next = prep(parts[0]);
+      for (let i = 0; i < parts.length; i++) {
+        const cur = await next;
+        if (!alive()) return 'cancelled';
+        next = i + 1 < parts.length ? prep(parts[i + 1]) : null;
+        await play(cur);
+        if (!alive()) return 'cancelled';
+      }
+      return 'done';
+    } catch (e) { log('Falha na voz neural: ' + (e.message || e), 'warn'); return alive() ? 'fallback' : 'cancelled'; }
+  }
+  function stop() { if (src) { try { src.stop(); } catch (e) {} src = null; } }
+  return { wanted, load, speak, stop, get ready() { return readyKey; } };
+})();
 // Portuguese voices, most natural first: downloaded "enhanced/premium" voices and the online
 // Google/Microsoft ones sound far better than the compact default.
 function voiceRank(v) {
@@ -1124,12 +1258,16 @@ function pickVoice() {
   TTS.jaVoice = vs.find(v => /^ja/i.test(v.lang)) || null;
   const sel = $('#set-tts');
   if (!sel) return;
-  sel.replaceChildren(...(pt.length ? pt : [{ voiceURI: '', name: 'Voz padrão do aparelho', localService: true }]).map(v => {
-    const o = document.createElement('option');
-    o.value = v.voiceURI; o.textContent = v.name + (v.localService ? '' : ' · online');
-    return o;
-  }));
-  sel.value = TTS.voice ? TTS.voice.voiceURI : '';
+  const group = (label, items) => {
+    const g = document.createElement('optgroup'); g.label = label;
+    g.append(...items.map(([value, text]) => { const o = document.createElement('option'); o.value = value; o.textContent = text; return o; }));
+    return g;
+  };
+  sel.replaceChildren(
+    group('Neurais · baixa 60 MB, funciona offline', Object.entries(NEURAL_VOICES).map(([k, v]) => [k, v.name])),
+    group('Do aparelho', pt.length ? pt.map(v => [v.voiceURI, v.name + (v.localService ? '' : ' · online')]) : [['', 'Voz padrão do aparelho']]),
+  );
+  sel.value = Neural.wanted() ? S.settings.ttsVoice : TTS.voice ? TTS.voice.voiceURI : '';
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 // Japanese runs (kana, kanji) are spoken with a Japanese voice, everything else in Portuguese
@@ -1143,22 +1281,31 @@ function speechParts(text) {
   if (last < text.length) out.push({ t: text.slice(last), ja: false });
   return out.flatMap(p => p.ja ? [p] : (p.t.match(/[^.!?;:]{1,220}[.!?;:]*/g) || []).map(t => ({ t, ja: false }))).filter(p => /[\p{L}\p{N}]/u.test(p.t));
 }
-function speak(text) {
-  if (!('speechSynthesis' in window) || !text) return;
-  speechSynthesis.cancel();
-  const parts = speechParts(text);
-  if (!parts.length) return;
-  TTS.speaking = true; Voice.pause();
+function speakSystem(parts, done) {
+  if (!('speechSynthesis' in window)) return done();
   parts.forEach((p, i) => {
     const u = new SpeechSynthesisUtterance(p.t.trim());
     u.lang = p.ja ? 'ja-JP' : 'pt-BR';
     const v = p.ja ? TTS.jaVoice : TTS.voice; if (v) u.voice = v;
     u.rate = (p.ja ? 0.9 : 1.02) * S.settings.ttsRate;
-    if (i === parts.length - 1) u.onend = u.onerror = () => { TTS.speaking = false; Voice.resume(); };
+    if (i === parts.length - 1) u.onend = u.onerror = done;
     speechSynthesis.speak(u);
   });
 }
-function stopSpeaking() { if ('speechSynthesis' in window) speechSynthesis.cancel(); TTS.speaking = false; Voice.resume(); }
+// every new speech or stop bumps TTS.gen, so callbacks from interrupted speech are ignored
+function stopOutput() { TTS.gen++; Neural.stop(); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+function speak(text) {
+  if (!text) return;
+  stopOutput();
+  const parts = speechParts(text);
+  if (!parts.length) return;
+  const gen = TTS.gen;
+  TTS.speaking = true; Voice.pause();
+  const done = () => { if (gen !== TTS.gen) return; TTS.speaking = false; Voice.resume(); };
+  if (Neural.wanted()) Neural.speak(parts, gen).then(r => { if (r === 'fallback') speakSystem(parts, done); else if (r === 'done') done(); });
+  else speakSystem(parts, done);
+}
+function stopSpeaking() { stopOutput(); TTS.speaking = false; Voice.resume(); }
 
 /* ================= voice commands ================= */
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -2267,8 +2414,20 @@ function bindUI() {
   };
   const tts = $('#set-tts');
   if ('speechSynthesis' in window) pickVoice();
-  tts.onchange = () => { st.ttsVoice = tts.value; saveSettings(); pickVoice(); speak('Esta é a voz que vai ler os seus cards.'); };
-  $('#tts-test').onclick = () => speak('Esta é a voz que vai ler os seus cards.');
+  const SAMPLE = 'Esta é a voz que vai ler os seus cards.';
+  tts.onchange = () => {
+    st.ttsVoice = tts.value; saveSettings(); pickVoice();
+    if (!Neural.wanted()) return speak(SAMPLE);
+    if (Neural.ready === st.ttsVoice) return speak(SAMPLE);
+    log('› baixando a voz neural (60 MB, só na primeira vez)…');
+    let shown = 0;
+    Neural.load(st.ttsVoice, f => { const p = Math.floor(f * 10) * 10; if (p > shown) { shown = p; log('› voz neural: ' + p + '%'); } })
+      .then(() => { log('› voz neural pronta, funciona até sem internet'); speak(SAMPLE); })
+      .catch(e => log('A voz neural não baixou (' + (e.message || e) + '). Tente de novo com internet.', 'warn'));
+  };
+  $('#tts-test').onclick = () => speak(SAMPLE);
+  // warm the neural voice up from storage so the first card isn't read by the system voice
+  if (Neural.wanted() && st.readAloud) Neural.load(st.ttsVoice).catch(() => {});
   const rate = $('#set-rate');
   const showRate = () => { $('#rate-val').textContent = st.ttsRate.toFixed(2).replace(/0$/, '').replace('.', ',') + '×'; };
   rate.value = st.ttsRate; showRate();
