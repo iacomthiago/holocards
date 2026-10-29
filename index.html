@@ -57,9 +57,11 @@ button{cursor:pointer}
 .brand{display:flex;align-items:center;gap:8px;letter-spacing:.22em;font-weight:600;font-size:14px;color:var(--line)}
 .mark{width:18px;height:18px;border:1.5px solid var(--line);border-radius:50%;position:relative;box-shadow:0 0 10px var(--line-dim)}
 .mark::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--line);box-shadow:0 0 8px var(--line)}
-.tabs{display:flex;gap:4px}
+.tabs{display:flex;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none}
+#app{grid-template-columns:minmax(0,1fr)}
 .tabs button{background:none;border:1px solid transparent;border-radius:4px;padding:6px 12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font-size:13px}
 .tabs button[aria-current="true"]{color:var(--fg);border-color:var(--line-dim);background:var(--line-faint)}
+@media (max-width:480px){.tabs button{padding:6px 8px;font-size:12px;letter-spacing:.04em}}
 .stats{display:flex;gap:10px;font-family:var(--f-mono);font-size:15px;font-variant-numeric:tabular-nums;margin-left:auto}
 .stats span{display:flex;align-items:center;gap:5px}
 .stats span::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
@@ -71,7 +73,7 @@ button{cursor:pointer}
 .chip.on .dot{background:var(--good);opacity:1;box-shadow:0 0 8px var(--good);animation:pulse 1.6s ease-in-out infinite}
 .chip.busy .dot{background:var(--hard);opacity:1}
 .chip.err .dot{background:var(--again);opacity:1}
-.card-tools{display:flex;align-items:center;gap:8px;min-width:0}
+.card-tools{display:flex;align-items:center;gap:8px;min-width:0;margin-left:auto}
 .mini{background:none;border:1px solid var(--line-dim);border-radius:4px;padding:3px 9px;font:500 12px var(--f-hud);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-height:30px}
 .mini.danger{border-color:rgba(255,95,120,.35);color:var(--again)}
 .mini.air-hover{border-color:var(--line);color:var(--fg)}
@@ -95,7 +97,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 #stage{min-height:0;position:relative}
 .view{height:100%;min-height:0}
 #view-cards{display:flex;flex-direction:column;gap:8px}
-.deckline{display:flex;justify-content:space-between;gap:12px;font-family:var(--f-hud);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.deckline{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-family:var(--f-hud);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .deckline b{color:var(--fg);font-weight:500}
 .holo{
   position:relative;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent;
@@ -157,6 +159,15 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 #pdf-canvas{display:block;margin:0 auto}
 .pdf-wrap.inverted #pdf-canvas{filter:invert(.92) hue-rotate(180deg)}
 .pdf-wrap .empty{position:absolute;inset:0;justify-content:center;padding:20px}
+.pdf-pick{position:absolute;inset:0;z-index:2;overflow:auto;padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:14px;background:var(--panel-solid)}
+.pdf-pick strong{font:500 22px var(--f-hud);letter-spacing:.04em}
+.pdf-items{width:min(100%,640px);display:flex;flex-direction:column;gap:8px}
+.pdf-item{display:flex;align-items:center;gap:8px}
+.pdf-item .open{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;min-height:52px;padding:10px 14px;background:var(--line-faint);border:1px solid var(--line-dim);border-radius:5px;font-size:16px}
+.pdf-item .open span{min-width:0;overflow-wrap:anywhere}
+.pdf-item .open small{color:var(--muted);white-space:nowrap;font-family:var(--f-mono)}
+.pdf-item .open.current{border-color:var(--line)}
+.pdf-item .open.air-hover{border-color:var(--line);color:var(--fg)}
 
 /* Library */
 #view-lib{overflow:auto;-webkit-user-select:text;user-select:text}
@@ -230,7 +241,9 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 .air[class*=" g"] b{color:var(--c)}
 .air.air-hover{border-color:var(--c,var(--line));background:rgba(63,216,255,.12);box-shadow:0 0 22px rgba(63,216,255,.22);transform:scale(1.03)}
 .air.air-press{animation:press .35s ease-out}
-.air.narrow{flex:.6}
+.air.narrow{flex:.6;min-width:0}
+#dock-pdf .air{min-width:0;padding-inline:2px}
+@media (max-width:480px){#dock-pdf{gap:5px}#dock-pdf .air small{display:none}}
 
 /* ---------- overlays ---------- */
 #camhud{position:fixed;z-index:20;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + clamp(64px,11vh,96px) + 18px);
@@ -286,6 +299,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
     <div class="sys">
       <button id="btn-sync" class="chip" hidden title="Sincronizar agora"><i class="dot"></i>Sync</button>
       <button id="btn-mic" class="chip"><i class="dot"></i>Voz</button>
+      <button id="btn-read" class="chip" title="Ler os cards em voz alta"><i class="dot"></i>Ler</button>
       <button id="btn-cam" class="chip"><i class="dot"></i>Mãos</button>
       <button id="btn-smaller" class="chip icon" aria-label="Diminuir texto">A−</button>
       <button id="btn-bigger" class="chip icon" aria-label="Aumentar texto">A+</button>
@@ -306,11 +320,15 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
     </section>
 
     <section id="view-pdf" class="view" hidden>
-      <div class="deckline"><span>PDF <b id="pdf-name">nenhum aberto</b></span><span id="pdf-pos"></span></div>
+      <div class="deckline"><span>PDF <b id="pdf-name">nenhum aberto</b></span><span class="card-tools"><span id="pdf-pos"></span><button class="mini" id="pdf-switch" data-air>Trocar</button></span></div>
       <div class="pdf-wrap" id="pdf-wrap">
         <canvas id="pdf-canvas"></canvas>
-        <div class="empty" id="pdf-empty"><strong>Nenhum PDF aberto</strong><span>Abra um arquivo na Biblioteca. Depois é só dizer “próxima” ou passar a mão no ar.</span>
-          <label class="btn primary">Abrir PDF<input type="file" id="in-pdf2" accept="application/pdf,.pdf" hidden></label></div>
+        <div class="pdf-pick" id="pdf-empty">
+          <strong>Seus PDFs</strong>
+          <div class="pdf-items" id="pdf-items"></div>
+          <p class="note" id="pdf-none">Nenhum PDF salvo ainda. As leis que você importar ficam guardadas aqui e chegam aos seus outros aparelhos pela sincronização.</p>
+          <label class="btn primary">Importar PDF<input type="file" id="in-pdf2" accept="application/pdf,.pdf" multiple hidden></label>
+        </div>
       </div>
     </section>
 
@@ -348,7 +366,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
           <div class="imports">
             <label class="btn primary">Importar do Anki (.apkg)<input type="file" id="in-apkg" accept=".apkg,.colpkg" hidden></label>
             <label class="btn">Importar texto (.txt/.csv)<input type="file" id="in-txt" accept=".txt,.csv,.tsv,text/plain" hidden></label>
-            <label class="btn">Abrir PDF<input type="file" id="in-pdf" accept="application/pdf,.pdf" hidden></label>
+            <label class="btn">Importar PDF<input type="file" id="in-pdf" accept="application/pdf,.pdf" multiple hidden></label>
           </div>
           <div class="note">
             <p><b>Como trazer seus baralhos do Anki</b></p>
@@ -897,7 +915,7 @@ function setView(v) {
   $('#view-cards').hidden = v !== 'cards'; $('#view-pdf').hidden = v !== 'pdf'; $('#view-lib').hidden = v !== 'lib'; $('#view-stats').hidden = v !== 'stats';
   if (v === 'lib') renderLib();
   if (v === 'stats') renderStats();
-  if (v === 'pdf' && PDF.doc) PDF.render();
+  if (v === 'pdf') { if (PDF.doc) PDF.render(); else showPdfPicker(true); }
   setDock();
 }
 async function renderLib() {
@@ -1306,6 +1324,15 @@ function speak(text) {
   else speakSystem(parts, done);
 }
 function stopSpeaking() { stopOutput(); TTS.speaking = false; Voice.resume(); }
+function setReadAloud(on) {
+  S.settings.readAloud = on; saveSettings();
+  $('#set-read').checked = on;
+  $('#btn-read').classList.toggle('on', on);
+  if (!on) { stopSpeaking(); log('› leitura em voz alta desligada'); return; }
+  log('› leitura em voz alta ligada');
+  if (S.view === 'cards' && S.cur) speak(textOf(S.cur.front) + (S.revealed ? '. Resposta: ' + answerText(S.cur) : ''));
+  else if (Neural.wanted()) Neural.load(S.settings.ttsVoice).catch(() => {});
+}
 
 /* ================= voice commands ================= */
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1316,6 +1343,9 @@ const CONFIRM_COMMANDS = [
 ];
 const BREAK_COMMANDS = [['resume', /\b(voltar|volta|continuar|continua|bora|vamos|acabou)\b/]];
 const COMMANDS = [
+  // checked before "parar" and "ler" so the longer phrases win
+  ['readOn', /\b(ler em voz alta|em voz alta|ler sempre|ligar (a )?leitura)\b/],
+  ['readOff', /\b(parar de ler|para de ler|nao ler|desligar (a )?leitura|sem leitura)\b/],
   ['undo', /\b(desfazer|desfaz|desfaca)\b/],
   ['stop', /\b(parar|pare|silencio|chega|cala a boca)\b/],
   ['more', /\bmais (novos|cards|cartoes)\b/],
@@ -1336,6 +1366,7 @@ const COMMANDS = [
   ['bigger', /\b(aumenta|aumentar|maior|amplia|ampliar)\b/],
   ['smaller', /\b(diminui|diminuir|menor|reduz|reduzir)\b/],
   ['cards', /\b(flashcards?|cards|cartoes)\b/],
+  ['pdfs', /\b(trocar|lista|outro pdf|outra lei|minhas leis)\b/],
   ['pdf', /\b(pdf|apostila|livro)\b/],
   ['focus', /\b(foco|focar|tela cheia)\b/],
   ['unfocus', /\b(sair|menu)\b/],
@@ -1375,6 +1406,9 @@ function runCommand(k) {
     case 'smaller': return smaller();
     case 'cards': return setView('cards');
     case 'pdf': return setView('pdf');
+    case 'pdfs': if (v !== 'pdf') setView('pdf'); return showPdfPicker(true);
+    case 'readOn': return setReadAloud(true);
+    case 'readOff': return setReadAloud(false);
     case 'focus': return setFocus(true);
     case 'unfocus': return setFocus(false);
   }
@@ -1410,12 +1444,10 @@ const BrowserVoice = (() => {
         const key = String(i);
         if (handled.has(key)) continue;
         const words = norm(alts[0]).split(' ').filter(Boolean);
-        // Short phrases fire on interim results so the response feels instant.
-        if (r.isFinal || (words.length && words.length <= 2)) {
-          const cmd = matchCommand(alts);
-          if (cmd) { handled.add(key); log('ouvi “' + alts[0].trim() + '”', 'heard'); runCommand(cmd); }
-          else if (r.isFinal) log('ouvi “' + alts[0].trim() + '” (não é um comando)', 'heard');
-        }
+        // Short phrases with an unambiguous command fire on interim results so the response feels instant.
+        const cmd = (r.isFinal || (words.length && words.length <= 2)) && matchCommand(alts);
+        if (cmd && (r.isFinal || EARLY_COMMANDS.has(cmd))) { handled.add(key); log('ouvi “' + alts[0].trim() + '”', 'heard'); runCommand(cmd); }
+        else if (r.isFinal && !cmd) log('ouvi “' + alts[0].trim() + '” (não é um comando)', 'heard');
       }
     };
     rec.onerror = e => {
@@ -1478,9 +1510,12 @@ const GRAMMAR = [
   'continuar', 'seguir', 'bora', 'vamos', 'pausa', 'descansar', 'parar', 'acabou',
   'voltar', 'volta', 'próxima', 'anterior', 'avançar', 'descer', 'subir',
   'ler', 'repetir', 'silêncio', 'chega', 'arquivar', 'apagar', 'excluir', 'desfazer',
-  'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', 'foco', 'tela cheia', 'sair', 'menu', '[unk]',
+  'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', 'foco', 'tela cheia', 'sair', 'menu',
+  'ler em voz alta', 'em voz alta', 'ler sempre', 'ligar leitura', 'parar de ler', 'para de ler', 'não ler', 'desligar leitura',
+  'trocar', 'lista', 'outra lei', '[unk]',
 ];
-const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'read', 'stop', 'bigger', 'smaller', 'resume', 'cards', 'pdf', 'focus', 'unfocus']);
+// "ler" and "parar" wait for the end of the phrase: they start "ler em voz alta" and "parar de ler"
+const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'bigger', 'smaller', 'resume', 'cards', 'pdf', 'pdfs', 'focus', 'unfocus']);
 const LocalVoice = (() => {
   let model = null, rec = null, ctx = null, stream = null, src = null, node = null;
   let want = false, muted = false, consumed = 0, lastCandidate = null;
@@ -1769,12 +1804,18 @@ const PDF = {
     $('#pdf-pos').textContent = `página ${this.page} / ${this.doc.numPages}`;
   },
   go(d) {
-    if (!this.doc) { log('Abra um PDF primeiro, na Biblioteca.', 'warn'); return; }
+    if (!this.doc) { log('Escolha um PDF na lista primeiro.', 'warn'); return; }
     const n = Math.max(1, Math.min(this.doc.numPages, this.page + d));
     if (n === this.page) return;
     this.page = n; $('#pdf-wrap').scrollTop = 0; this.render();
     pressFx($(d > 0 ? '#pdf-next' : '#pdf-prev'));
-    DB.set('pdfpage:' + this.name, n);
+    Pdfs.setPage(this.name, n);
+  },
+  close() {
+    this.doc = null; this.name = '';
+    $('#pdf-name').textContent = 'nenhum aberto'; $('#pdf-pos').textContent = '';
+    const c = $('#pdf-canvas'); c.width = c.height = 0;
+    showPdfPicker(true);
   },
   zoom(f) { this.scale = Math.max(0.5, Math.min(4, this.scale * f)); this.render(); },
   async read() {
@@ -1786,15 +1827,79 @@ const PDF = {
     speak(text);
   },
 };
-async function openPdfFile(file) {
-  if (!file) return;
-  try {
-    const buf = await file.arrayBuffer();
-    const page = await DB.get('pdfpage:' + file.name) || 1;
-    await PDF.open(buf, file.name, page);
-    DB.set('pdf:last', { name: file.name, data: buf });
-    setView('pdf');
-  } catch (e) { log('Não consegui abrir o PDF: ' + e.message, 'warn'); }
+/* Saved PDFs (mostly laws, a few hundred KB each): kept on the device and synced through a
+   second gist. Deleted ones stay in the list as tombstones so the deletion reaches other devices. */
+const PDF_SYNC_MAX = 2 * 1024 * 1024;
+const Pdfs = {
+  list: async () => await DB.get('pdfs') || [],
+  async put(name, buf, at = Date.now(), fromSync = false) {
+    const list = await this.list(), entry = { id: 'p' + fnv(name), name, size: buf.byteLength, at };
+    const i = list.findIndex(p => p.name === name);
+    if (i >= 0) list[i] = entry; else list.push(entry);
+    await DB.set('pdfdata:' + entry.id, buf);
+    await DB.set('pdfs', list);
+    if (!fromSync) Sync.soon(1500);
+    renderPdfList();
+    return entry;
+  },
+  async remove(name, at = Date.now(), fromSync = false) {
+    const list = await this.list(), p = list.find(x => x.name === name);
+    if (!p) return;
+    const wasOpen = !p.deleted && PDF.name === name;
+    Object.assign(p, { deleted: true, at }); delete p.size;
+    await DB.del('pdfdata:' + p.id);
+    await DB.set('pdfs', list);
+    if (wasOpen) PDF.close();
+    if (!fromSync) Sync.soon(1500);
+    renderPdfList();
+  },
+  pos: async () => await DB.get('pdfpos') || {},
+  async setPage(name, page) {
+    const pos = await this.pos();
+    pos[name] = { page, at: Date.now() };
+    await DB.set('pdfpos', pos);
+    Sync.soon();
+  },
+};
+async function openPdf(entry, show = true) {
+  const buf = await DB.get('pdfdata:' + entry.id);
+  if (!buf) { log('Esse PDF não está neste aparelho.', 'warn'); return; }
+  const pos = (await Pdfs.pos())[entry.name];
+  await PDF.open(buf, entry.name, pos ? pos.page : 1);
+  DB.set('pdf:last', entry.name);
+  if (show) setView('pdf');
+}
+async function openPdfFiles(files) {
+  let last = null;
+  for (const file of files) {
+    try {
+      const buf = await file.arrayBuffer();
+      last = await Pdfs.put(file.name, buf);
+      if (buf.byteLength > PDF_SYNC_MAX) log(`“${file.name}” tem ${(buf.byteLength / 1048576).toFixed(1)} MB e fica só neste aparelho: a sincronização leva PDFs de até 2 MB.`, 'warn');
+    } catch (e) { log('Não consegui importar ' + file.name + ': ' + e.message, 'warn'); }
+  }
+  if (last) await openPdf(last).catch(e => log('Não consegui abrir o PDF: ' + e.message, 'warn'));
+}
+function showPdfPicker(on) { $('#pdf-empty').hidden = !on; if (on) renderPdfList(); }
+async function renderPdfList() {
+  const box = $('#pdf-items');
+  const list = (await Pdfs.list()).filter(p => !p.deleted).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+  const pos = await Pdfs.pos();
+  $('#pdf-none').hidden = list.length > 0;
+  box.replaceChildren(...list.map(p => {
+    const row = document.createElement('div'); row.className = 'pdf-item';
+    const open = document.createElement('button');
+    open.className = 'open' + (p.name === PDF.name ? ' current' : ''); open.dataset.air = '';
+    const title = document.createElement('span'); title.textContent = p.name.replace(/\.pdf$/i, '');
+    const meta = document.createElement('small');
+    meta.textContent = (pos[p.name] ? 'pág. ' + pos[p.name].page + ' · ' : '') + Math.max(1, Math.round(p.size / 1024)) + ' KB';
+    open.append(title, meta);
+    open.onclick = () => openPdf(p).catch(e => log('Não consegui abrir o PDF: ' + e.message, 'warn'));
+    const del = document.createElement('button'); del.className = 'mini danger'; del.textContent = 'Remover';
+    del.onclick = () => { if (confirm(`Remover “${p.name}” deste e dos outros aparelhos?`)) Pdfs.remove(p.name); };
+    row.append(open, del);
+    return row;
+  }));
 }
 
 /* ================= importing ================= */
@@ -2101,17 +2206,23 @@ function mergeProg(local, remote) {
   for (const k in remote) out[k] = newerEntry(local[k], remote[k]);
   return out;
 }
-async function packJson(obj) { // gzip + base64 keeps a 1,200-card deck well under the gist's 1 MB inline limit
-  const stream = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'));
-  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+function toB64(bytes) {
+  const buf = new Uint8Array(bytes);
   let bin = '';
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-async function unpackJson(b64) {
+function fromB64(b64) {
   const bin = atob(b64.trim()), buf = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return buf;
+}
+async function packJson(obj) { // gzip + base64 keeps a 1,200-card deck well under the gist's 1 MB inline limit
+  const stream = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream('gzip'));
+  return toB64(await new Response(stream).arrayBuffer());
+}
+async function unpackJson(b64) {
+  const stream = new Blob([fromB64(b64)]).stream().pipeThrough(new DecompressionStream('gzip'));
   return JSON.parse(await new Response(stream).text());
 }
 const Sync = (() => {
@@ -2146,6 +2257,54 @@ const Sync = (() => {
     });
     S.settings.gistId = gist.id; saveSettings();
     return gist;
+  }
+  /* PDFs live in a second gist so the regular sync stays small. The main file lists each one with
+     the address of its exact uploaded version, so other devices download only what changed. */
+  async function syncPdfs(remote, out) {
+    const rp = remote.pdfs || {}, list = await Pdfs.list();
+    const byName = new Map(list.map(p => [p.name, p]));
+    let changed = false;
+    out.pdfs = { ...rp };
+    if (remote.pdfGist) out.pdfGist = remote.pdfGist;
+    for (const [name, m] of Object.entries(rp)) {
+      const local = byName.get(name);
+      if (local && (local.at || 0) >= m.at) continue;
+      if (m.deleted) { if (local) { changed ||= !local.deleted; await Pdfs.remove(name, m.at, true); } continue; }
+      if (!m.raw) continue;
+      const r = await fetch(m.raw, { cache: 'no-store' });
+      if (!r.ok) continue;
+      await Pdfs.put(name, fromB64(await r.text()).buffer, m.at, true);
+      changed = true;
+    }
+    const files = {};
+    for (const p of list) {
+      const m = rp[p.name];
+      if (m && (m.at || 0) >= p.at) continue;
+      if (p.deleted) { out.pdfs[p.name] = { deleted: true, at: p.at }; continue; }
+      if (p.size > PDF_SYNC_MAX) continue;
+      const data = await DB.get('pdfdata:' + p.id);
+      if (!data) continue;
+      const file = 'pdf-' + fnv(p.name) + '.txt';
+      files[file] = { content: toB64(data) };
+      out.pdfs[p.name] = { file, at: p.at, size: p.size };
+    }
+    if (Object.keys(files).length) {
+      if (!out.pdfGist) {
+        const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'HoloCards: PDFs', public: false, files: { 'leia-me.txt': { content: 'PDFs guardados pelo HoloCards.' } } }) });
+        out.pdfGist = g.id;
+      }
+      const res = await gh('/gists/' + out.pdfGist, { method: 'PATCH', body: JSON.stringify({ files }) });
+      for (const m of Object.values(out.pdfs)) if (m.file && files[m.file] && res.files[m.file]) m.raw = res.files[m.file].raw_url;
+    }
+    // reading position: the most recent page wins
+    const pos = await Pdfs.pos(), outPos = { ...(remote.pdfpos || {}) };
+    let posChanged = false;
+    for (const [name, p] of Object.entries(pos)) if (!outPos[name] || p.at > outPos[name].at) outPos[name] = p;
+    for (const [name, p] of Object.entries(outPos)) if (!pos[name] || p.at > pos[name].at) { pos[name] = p; posChanged = true; }
+    if (posChanged) await DB.set('pdfpos', pos);
+    out.pdfpos = outPos;
+    if (changed || posChanged) renderPdfList();
+    return changed;
   }
   async function run() {
     if (!enabled()) { ui('off'); return; }
@@ -2202,6 +2361,7 @@ const Sync = (() => {
         const rm = out.decks[t.name];
         if (!rm || (rm.updatedAt || 0) <= t.at) { out.decks[t.name] = { deleted: true, updatedAt: t.at }; delete out.prog[t.name]; }
       }
+      if (await syncPdfs(remote, out)) touched = true;
 
       const text = JSON.stringify(out);
       if (Object.keys(files).length || text !== JSON.stringify(remote)) {
@@ -2388,12 +2548,16 @@ function bindUI() {
   $('#pdf-read').onclick = () => PDF.read();
   $('#in-apkg').onchange = e => { importApkg(e.target.files[0]); e.target.value = ''; };
   $('#in-txt').onchange = e => { importText(e.target.files[0]); e.target.value = ''; };
-  $('#in-pdf').onchange = $('#in-pdf2').onchange = e => { openPdfFile(e.target.files[0]); e.target.value = ''; };
+  $('#in-pdf').onchange = $('#in-pdf2').onchange = e => { openPdfFiles([...e.target.files]); e.target.value = ''; };
 
   const st = S.settings;
   const bindCheck = (id, key, after) => { const el = $(id); el.checked = !!st[key]; el.onchange = () => { st[key] = el.checked; saveSettings(); after && after(); }; };
   bindCheck('#set-shuffle', 'shuffle', () => { if (!S.revealed) showCard(); });
-  bindCheck('#set-read', 'readAloud');
+  $('#set-read').checked = !!st.readAloud;
+  $('#set-read').onchange = e => setReadAloud(e.target.checked);
+  $('#btn-read').classList.toggle('on', !!st.readAloud);
+  $('#btn-read').onclick = () => setReadAloud(!st.readAloud);
+  $('#pdf-switch').onclick = () => showPdfPicker($('#pdf-empty').hidden);
   bindCheck('#set-dwell', 'dwell');
   bindCheck('#set-swipe', 'swipe');
   bindCheck('#set-cam', 'showCam', () => { if (Hands.on) $('#camhud').hidden = !st.showCam; });
@@ -2414,18 +2578,18 @@ function bindUI() {
   };
   const tts = $('#set-tts');
   if ('speechSynthesis' in window) pickVoice();
-  const SAMPLE = 'Esta é a voz que vai ler os seus cards.';
+  const VOICE_SAMPLE = 'Esta é a voz que vai ler os seus cards.';
   tts.onchange = () => {
     st.ttsVoice = tts.value; saveSettings(); pickVoice();
-    if (!Neural.wanted()) return speak(SAMPLE);
-    if (Neural.ready === st.ttsVoice) return speak(SAMPLE);
+    if (!Neural.wanted()) return speak(VOICE_SAMPLE);
+    if (Neural.ready === st.ttsVoice) return speak(VOICE_SAMPLE);
     log('› baixando a voz neural (60 MB, só na primeira vez)…');
     let shown = 0;
     Neural.load(st.ttsVoice, f => { const p = Math.floor(f * 10) * 10; if (p > shown) { shown = p; log('› voz neural: ' + p + '%'); } })
-      .then(() => { log('› voz neural pronta, funciona até sem internet'); speak(SAMPLE); })
+      .then(() => { log('› voz neural pronta, funciona até sem internet'); speak(VOICE_SAMPLE); })
       .catch(e => log('A voz neural não baixou (' + (e.message || e) + '). Tente de novo com internet.', 'warn'));
   };
-  $('#tts-test').onclick = () => speak(SAMPLE);
+  $('#tts-test').onclick = () => speak(VOICE_SAMPLE);
   // warm the neural voice up from storage so the first card isn't read by the system voice
   if (Neural.wanted() && st.readAloud) Neural.load(st.ttsVoice).catch(() => {});
   const rate = $('#set-rate');
@@ -2462,8 +2626,16 @@ async function init() {
   if (!S.decks.length) await addDeck('Exemplo · HoloCards', sampleCards(), {}, 'exemplo');
   const last = await DB.get('lastDeck');
   await openDeck(S.decks.some(d => d.id === last) ? last : S.decks[0].id);
-  const pdf = await DB.get('pdf:last');
-  if (pdf) PDF.open(pdf.data, pdf.name, await DB.get('pdfpage:' + pdf.name) || 1).catch(() => {});
+  let lastPdf = await DB.get('pdf:last');
+  // older versions kept only the last PDF ({ name, data }) and its page: move them into the library
+  if (lastPdf && lastPdf.data) {
+    const page = await DB.get('pdfpage:' + lastPdf.name);
+    if (page) { const pos = await Pdfs.pos(); pos[lastPdf.name] ||= { page, at: 1 }; await DB.set('pdfpos', pos); }
+    await Pdfs.put(lastPdf.name, lastPdf.data);
+    lastPdf = lastPdf.name; DB.set('pdf:last', lastPdf);
+  }
+  const lastEntry = (await Pdfs.list()).find(p => p.name === lastPdf && !p.deleted);
+  if (lastEntry) openPdf(lastEntry, false).catch(() => {});
   if (!Voice.supported) $('#btn-mic').title = 'Reconhecimento de voz indisponível neste navegador';
   Sync.ui('off', Sync.enabled ? '' : 'Ainda não conectado. Por enquanto o progresso fica só neste aparelho.');
   Sync.run();
