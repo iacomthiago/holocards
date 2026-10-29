@@ -377,6 +377,8 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
           <div class="setting"><label for="set-voice">Reconhecimento de voz<small>“No aparelho” escuta sem pausas e funciona sem internet (baixa 32 MB na primeira vez). “Do navegador” usa o serviço do Safari/Chrome.</small></label><select id="set-voice"><option value="local">No aparelho</option><option value="browser">Do navegador</option></select></div>
           <div class="setting"><label for="set-shuffle">Ordem aleatória<small>Cards novos e revisões do dia embaralhados, em vez da ordem em que foram criados.</small></label><input type="checkbox" id="set-shuffle"></div>
           <div class="setting"><label for="set-read">Ler cards em voz alta<small>Lê a pergunta ao aparecer e a resposta ao revelar. Bom pra estudar de olhos fechados.</small></label><input type="checkbox" id="set-read"></div>
+          <div class="setting"><label for="set-tts">Voz da leitura<small>As melhores vêm primeiro. No iPhone, baixe uma voz melhor em Ajustes › Acessibilidade › Conteúdo Falado › Vozes › Português (Brasil) e reabra o app. No Android, as vozes “Google” soam mais naturais.</small></label><span class="sync-row" style="margin:0"><select id="set-tts"></select><button class="mini" id="tts-test" type="button">Ouvir</button></span></div>
+          <div class="setting"><label for="set-rate">Velocidade da leitura: <span id="rate-val">1,0×</span></label><input type="range" id="set-rate" min="0.7" max="1.5" step="0.05"></div>
           <div class="setting"><label for="set-dwell">Clicar segurando a mira<small>Além da pinça: parar a mira 1 segundo em cima de um botão também clica.</small></label><input type="checkbox" id="set-dwell"></div>
           <div class="setting"><label for="set-swipe">Passar a mão pra virar<small>Mão aberta passando de lado: vira página do PDF ou mostra a resposta.</small></label><input type="checkbox" id="set-swipe"></div>
           <div class="setting"><label for="set-reach">Alcance da mão<small>Menor = mexe menos a mão pra cruzar a tela inteira.</small></label><input type="range" id="set-reach" min="0.35" max="0.95" step="0.05"></div>
@@ -512,7 +514,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, pomodoro: true, voiceEngine: 'local', retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
+  settings: { readAloud: false, ttsVoice: '', ttsRate: 1, dwell: false, swipe: true, shuffle: true, pomodoro: true, voiceEngine: 'local', retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -1109,10 +1111,25 @@ function scrollStage(dir) {
 
 /* ================= speech output ================= */
 const TTS = { voice: null, jaVoice: null, speaking: false };
+// Portuguese voices, most natural first: downloaded "enhanced/premium" voices and the online
+// Google/Microsoft ones sound far better than the compact default.
+function voiceRank(v) {
+  return (/premium|enhanced|melhorad|natural|neural|online/i.test(v.name) ? 4 : 0) + (/google|microsoft/i.test(v.name) ? 2 : 0)
+    + (/luciana|felipe|francisca|antonio/i.test(v.name) ? 1 : 0) + (v.lang.replace('_', '-') === 'pt-BR' ? 1 : 0);
+}
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
-  TTS.voice = vs.find(v => v.lang === 'pt-BR' && /google|luciana|felipe|natural/i.test(v.name)) || vs.find(v => v.lang === 'pt-BR') || vs.find(v => v.lang && v.lang.startsWith('pt')) || null;
+  const pt = vs.filter(v => /^pt/i.test(v.lang)).sort((a, b) => voiceRank(b) - voiceRank(a));
+  TTS.voice = pt.find(v => v.voiceURI === S.settings.ttsVoice) || pt[0] || null;
   TTS.jaVoice = vs.find(v => /^ja/i.test(v.lang)) || null;
+  const sel = $('#set-tts');
+  if (!sel) return;
+  sel.replaceChildren(...(pt.length ? pt : [{ voiceURI: '', name: 'Voz padrão do aparelho', localService: true }]).map(v => {
+    const o = document.createElement('option');
+    o.value = v.voiceURI; o.textContent = v.name + (v.localService ? '' : ' · online');
+    return o;
+  }));
+  sel.value = TTS.voice ? TTS.voice.voiceURI : '';
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 // Japanese runs (kana, kanji) are spoken with a Japanese voice, everything else in Portuguese
@@ -1136,7 +1153,7 @@ function speak(text) {
     const u = new SpeechSynthesisUtterance(p.t.trim());
     u.lang = p.ja ? 'ja-JP' : 'pt-BR';
     const v = p.ja ? TTS.jaVoice : TTS.voice; if (v) u.voice = v;
-    u.rate = p.ja ? 0.9 : 1.02;
+    u.rate = (p.ja ? 0.9 : 1.02) * S.settings.ttsRate;
     if (i === parts.length - 1) u.onend = u.onerror = () => { TTS.speaking = false; Voice.resume(); };
     speechSynthesis.speak(u);
   });
@@ -1349,8 +1366,11 @@ const LocalVoice = (() => {
   async function start() {
     want = true; muted = false; consumed = 0;
     ui('busy');
-    // the audio context is created inside the tap, as iPhone requires
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // The audio context is created inside the tap, as iPhone requires. Elsewhere it runs at the
+    // model's 16 kHz so the browser resamples natively and slower tablets keep up; Safari keeps
+    // its own rate because it struggles to feed the microphone into a resampled context.
+    const AC = window.AudioContext || window.webkitAudioContext;
+    try { ctx = IOS ? new AC() : new AC({ sampleRate: 16000 }); } catch (e) { ctx = new AC(); }
     ctx.resume();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
@@ -1364,7 +1384,7 @@ const LocalVoice = (() => {
       rec.on('partialresult', m => onText(m.result.partial || '', false));
       rec.on('result', m => onText(m.result.text || '', true));
       src = ctx.createMediaStreamSource(stream);
-      node = ctx.createScriptProcessor(4096, 1, 1);
+      node = ctx.createScriptProcessor(ctx.sampleRate <= 16000 ? 2048 : 4096, 1, 1); // ~0.1 s of audio per chunk
       node.onaudioprocess = e => { if (!muted && rec) { try { rec.acceptWaveform(e.inputBuffer); } catch (err) {} } };
       src.connect(node); node.connect(ctx.destination);
       ui('on');
@@ -2245,6 +2265,14 @@ function bindUI() {
     st.voiceEngine = ve.value; saveSettings();
     if (Voice.on) { Voice.stop(); log('› toque em Voz pra ligar com o novo reconhecimento'); }
   };
+  const tts = $('#set-tts');
+  if ('speechSynthesis' in window) pickVoice();
+  tts.onchange = () => { st.ttsVoice = tts.value; saveSettings(); pickVoice(); speak('Esta é a voz que vai ler os seus cards.'); };
+  $('#tts-test').onclick = () => speak('Esta é a voz que vai ler os seus cards.');
+  const rate = $('#set-rate');
+  const showRate = () => { $('#rate-val').textContent = st.ttsRate.toFixed(2).replace(/0$/, '').replace('.', ',') + '×'; };
+  rate.value = st.ttsRate; showRate();
+  rate.oninput = () => { st.ttsRate = +rate.value; showRate(); saveSettings(); };
   const nw = $('#set-new'); nw.value = st.newPerDay; nw.onchange = () => { st.newPerDay = Math.max(0, Math.min(999, +nw.value || 0)); nw.value = st.newPerDay; saveSettings(); showCard(); };
 
   document.addEventListener('keydown', e => {
