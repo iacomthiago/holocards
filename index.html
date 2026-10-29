@@ -175,6 +175,7 @@ button{cursor:pointer}
 .setting input[type=checkbox]{width:22px;height:22px;accent-color:var(--line)}
 .setting input[type=number]{width:80px;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:6px 8px}
 .setting input[type=range]{width:140px;accent-color:var(--line)}
+.setting select{background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:6px 8px;color:var(--fg)}
 .cmds{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:14px}
 .cmds dt{font-family:var(--f-mono);color:var(--line);white-space:nowrap}
 .cmds dd{margin:0;color:var(--muted)}
@@ -367,6 +368,7 @@ button{cursor:pointer}
           </div>
           <p class="note" id="sync-status"></p>
           <h2>Ajustes</h2>
+          <div class="setting"><label for="set-voice">Reconhecimento de voz<small>“No aparelho” escuta sem pausas e funciona sem internet (baixa 32 MB na primeira vez). “Do navegador” usa o serviço do Safari/Chrome.</small></label><select id="set-voice"><option value="local">No aparelho</option><option value="browser">Do navegador</option></select></div>
           <div class="setting"><label for="set-shuffle">Ordem aleatória<small>Cards novos e revisões do dia embaralhados, em vez da ordem em que foram criados.</small></label><input type="checkbox" id="set-shuffle"></div>
           <div class="setting"><label for="set-read">Ler cards em voz alta<small>Lê a pergunta ao aparecer e a resposta ao revelar. Bom pra estudar de olhos fechados.</small></label><input type="checkbox" id="set-read"></div>
           <div class="setting"><label for="set-dwell">Clicar segurando a mira<small>Além da pinça: parar a mira 1 segundo em cima de um botão também clica.</small></label><input type="checkbox" id="set-dwell"></div>
@@ -503,7 +505,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, pomodoro: true, retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
+  settings: { readAloud: false, dwell: false, swipe: true, shuffle: true, pomodoro: true, voiceEngine: 'local', retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -1199,7 +1201,8 @@ const VOICE_ERRORS = {
   'network': 'O reconhecimento de voz precisa de internet.',
   'language-not-supported': 'Este aparelho não reconhece português por voz.',
 };
-const Voice = (() => {
+// the browser's own speech service: fallback when the on-device engine can't run
+const BrowserVoice = (() => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, want = false, paused = false, running = false, handled = new Set(), restartTimer = null, started = false, failures = 0, micBusy = 0;
   const ui = s => { const b = $('#btn-mic'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
@@ -1268,6 +1271,116 @@ const Voice = (() => {
     pause() { if (!want) return; paused = true; clearTimeout(restartTimer); try { rec && rec.abort(); } catch (e) {} },
     // after the app speaks, give the iPhone time to hand the audio back to the microphone
     resume() { if (!want || !paused) return; paused = false; schedule(IOS ? 700 : 350); },
+  };
+})();
+
+/* On-device recognition (Vosk, Portuguese small model): the microphone stays open and audio is
+   decoded inside the page, restricted to the command words. No gaps between phrases, no internet
+   needed after the first download, and it works where the browser has no speech service (Quest). */
+const VOSK_LIB = 'https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js';
+// hosted by the library's author; downloaded once, then kept in the browser's storage
+const VOSK_MODEL = 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-pt-0.3.tar.gz';
+const GRAMMAR = [
+  'mostrar', 'mostra', 'mostre', 'virar', 'vira', 'vire', 'resposta', 'revelar', 'abrir', 'ver',
+  'errei', 'errado', 'errada', 'não sei', 'não lembro', 'esqueci', 'de novo', 'outra vez',
+  'dúvida', 'fiquei em dúvida', 'chutei', 'mais ou menos', 'difícil',
+  'acertei', 'bom', 'boa', 'certo', 'certa', 'lembrei', 'sabia',
+  'certeza', 'tenho certeza', 'fácil', 'moleza',
+  'um', 'dois', 'três', 'quatro', 'nota um', 'nota dois', 'nota três', 'nota quatro',
+  'sim', 'confirmar', 'pode', 'isso', 'não', 'cancelar', 'deixa',
+  'continuar', 'seguir', 'bora', 'vamos', 'pausa', 'descansar', 'parar', 'acabou',
+  'voltar', 'volta', 'próxima', 'anterior', 'avançar', 'descer', 'subir',
+  'ler', 'repetir', 'silêncio', 'chega', 'arquivar', 'apagar', 'excluir', 'desfazer',
+  'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', '[unk]',
+];
+const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'read', 'stop', 'bigger', 'smaller', 'resume', 'cards', 'pdf']);
+const LocalVoice = (() => {
+  let model = null, rec = null, ctx = null, stream = null, src = null, node = null;
+  let want = false, muted = false, consumed = 0, lastCandidate = null;
+  const available = !!(window.WebAssembly && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext));
+  const ui = s => { const b = $('#btn-mic'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
+  // partial results grow word by word within one utterance; only the words after the last command count
+  function onText(text, final) {
+    const words = norm(text).split(' ').filter(w => w && w !== 'unk');
+    const fresh = words.slice(consumed);
+    if (fresh.length) {
+      const cmd = matchCommand([fresh.join(' ')]) || matchCommand([fresh.slice(-2).join(' ')]) || matchCommand([fresh.slice(-1).join(' ')]);
+      // Unambiguous commands fire as soon as two partials agree. Grades that sound alike ("acertei" is
+      // heard as "certeza" for ~half a second) and yes/no answers wait for the end of the phrase.
+      const key = cmd && cmd + ':' + fresh.join(' ');
+      if (cmd && (final || (EARLY_COMMANDS.has(cmd) && key === lastCandidate))) {
+        consumed = words.length; lastCandidate = null;
+        log('ouvi “' + fresh.join(' ') + '”', 'heard');
+        runCommand(cmd);
+      } else lastCandidate = key;
+    }
+    if (final) { consumed = 0; lastCandidate = null; }
+  }
+  function teardown() {
+    try { node && node.disconnect(); src && src.disconnect(); } catch (e) {}
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    try { rec && rec.remove(); } catch (e) {}
+    try { ctx && ctx.close(); } catch (e) {}
+    node = src = stream = rec = ctx = null;
+  }
+  async function start() {
+    want = true; muted = false; consumed = 0;
+    ui('busy');
+    // the audio context is created inside the tap, as iPhone requires
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+      if (!model) {
+        log('› preparando a voz no aparelho. Na primeira vez baixa 32 MB, depois funciona até sem internet…');
+        await loadScript(VOSK_LIB);
+        model = await Vosk.createModel(VOSK_MODEL);
+      }
+      if (!want) { teardown(); return true; }
+      rec = new model.KaldiRecognizer(ctx.sampleRate, JSON.stringify(GRAMMAR));
+      rec.on('partialresult', m => onText(m.result.partial || '', false));
+      rec.on('result', m => onText(m.result.text || '', true));
+      src = ctx.createMediaStreamSource(stream);
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = e => { if (!muted && rec) { try { rec.acceptWaveform(e.inputBuffer); } catch (err) {} } };
+      src.connect(node); node.connect(ctx.destination);
+      ui('on');
+      log('› voz ativada (no aparelho). Diga “mostrar”, “acertei”, “certeza”…');
+      return true;
+    } catch (e) {
+      teardown(); want = false; ui('off');
+      const blocked = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      log(blocked ? 'Microfone bloqueado. Libere o microfone para este site e toque em Voz de novo.' : 'A voz no aparelho não carregou (' + (e.message || e) + ').', 'warn');
+      return blocked ? true : false; // a refusal stays a refusal; anything else falls back to the browser's voice
+    }
+  }
+  return {
+    available,
+    get on() { return want; },
+    start,
+    stop() { want = false; teardown(); ui('off'); log('› voz desligada'); },
+    pause() { muted = true; consumed = 0; lastCandidate = null; },
+    resume() { setTimeout(() => { muted = false; }, 300); }, // skip the tail of the app's own speech
+  };
+})();
+
+const Voice = (() => {
+  let engine = null;
+  return {
+    supported: LocalVoice.available || BrowserVoice.supported,
+    get on() { return !!engine && engine.on; },
+    async start() {
+      if (S.settings.voiceEngine !== 'browser' && LocalVoice.available) {
+        engine = LocalVoice;
+        if (await LocalVoice.start()) return;
+        log('Usando o reconhecimento de voz do navegador.', 'warn');
+      }
+      engine = BrowserVoice;
+      BrowserVoice.start();
+    },
+    stop() { if (engine) engine.stop(); },
+    pause() { if (engine) engine.pause(); },
+    resume() { if (engine) engine.resume(); },
   };
 })();
 
@@ -2102,6 +2215,12 @@ function bindUI() {
   ret.value = st.retention; showRet();
   ret.oninput = () => { st.retention = +ret.value; showRet(); saveSettings(); };
   bindCheck('#set-pomodoro', 'pomodoro');
+  const ve = $('#set-voice');
+  ve.value = st.voiceEngine;
+  ve.onchange = () => {
+    st.voiceEngine = ve.value; saveSettings();
+    if (Voice.on) { Voice.stop(); log('› toque em Voz pra ligar com o novo reconhecimento'); }
+  };
   const nw = $('#set-new'); nw.value = st.newPerDay; nw.onchange = () => { st.newPerDay = Math.max(0, Math.min(999, +nw.value || 0)); nw.value = st.newPerDay; saveSettings(); showCard(); };
 
   document.addEventListener('keydown', e => {
