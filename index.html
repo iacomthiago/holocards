@@ -85,6 +85,12 @@ button{cursor:pointer}
 .note a{color:var(--line)}
 .chip.icon{padding:6px 10px;min-width:40px;justify-content:center}
 
+/* ---------- focus mode: only the card and the answer buttons ---------- */
+body.focus .rail,body.focus .deckline{display:none}
+body.focus #app{grid-template-rows:minmax(0,1fr) auto}
+#btn-unfocus{position:fixed;z-index:40;top:calc(max(10px,env(safe-area-inset-top,0px)) + 14px);right:calc(max(16px,env(safe-area-inset-right,0px)) + 14px);opacity:.5}
+#btn-unfocus:hover,#btn-unfocus.air-hover{opacity:1}
+
 /* ---------- stage ---------- */
 #stage{min-height:0;position:relative}
 .view{height:100%;min-height:0}
@@ -283,7 +289,7 @@ button{cursor:pointer}
       <button id="btn-cam" class="chip"><i class="dot"></i>Mãos</button>
       <button id="btn-smaller" class="chip icon" aria-label="Diminuir texto">A−</button>
       <button id="btn-bigger" class="chip icon" aria-label="Aumentar texto">A+</button>
-      <button id="btn-full" class="chip icon" aria-label="Tela cheia">⛶</button>
+      <button id="btn-full" class="chip icon" aria-label="Modo foco" title="Modo foco: só o card na tela">⛶</button>
     </div>
   </header>
 
@@ -451,6 +457,7 @@ button{cursor:pointer}
 <div id="camhud" hidden><video id="cam" playsinline muted></video><canvas id="cam-overlay" width="320" height="240"></canvas><span class="lbl">RASTREIO</span></div>
 <div id="reticle" hidden><svg viewBox="0 0 60 60" aria-hidden="true"><circle cx="30" cy="30" r="22" class="r-ring"/><circle cx="30" cy="30" r="22" class="r-dwell" id="r-dwell"/><circle cx="30" cy="30" r="3" class="r-dot"/><path d="M30 0v10M30 50v10M0 30h10M50 30h10" class="r-tick"/></svg></div>
 <div id="hud-log" aria-live="polite"></div>
+<button id="btn-unfocus" class="chip icon" hidden data-air aria-label="Sair do modo foco" title="Sair do modo foco">✕</button>
 
 <script>
 'use strict';
@@ -1075,6 +1082,18 @@ function drawDailyChart(perDay) {
 async function studyMode(filter) { if (!S.deckId) return; await openDeck(S.deckId, filter); setView('cards'); }
 
 function applyFont() { document.documentElement.style.setProperty('--fs', S.settings.fontScale); }
+// Focus mode hides the top menu so the card gets the whole screen. Where the browser allows real
+// fullscreen (Android, computer) it also asks for it; the iPhone never allows it for a page.
+function setFocus(on) {
+  const d = document, el = d.documentElement, fs = d.fullscreenElement || d.webkitFullscreenElement;
+  if (d.body.classList.contains('focus') === on) return;
+  d.body.classList.toggle('focus', on);
+  $('#btn-unfocus').hidden = !on;
+  if (on && !fs) { const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) Promise.resolve(f.call(el)).catch(() => {}); }
+  if (!on && fs) Promise.resolve((d.exitFullscreen || d.webkitExitFullscreen).call(d)).catch(() => {});
+  if (S.view === 'pdf') setTimeout(() => PDF.render(), 250);
+  if (on) log('› modo foco. Diga “sair” ou toque no ✕ pra ver o menu.');
+}
 function bigger() {
   if (S.view === 'pdf') return PDF.zoom(1.2);
   S.settings.fontScale = Math.min(2.4, +(S.settings.fontScale * 1.12).toFixed(2)); applyFont(); saveSettings();
@@ -1154,6 +1173,8 @@ const COMMANDS = [
   ['smaller', /\b(diminui|diminuir|menor|reduz|reduzir)\b/],
   ['cards', /\b(flashcards?|cards|cartoes)\b/],
   ['pdf', /\b(pdf|apostila|livro)\b/],
+  ['focus', /\b(foco|focar|tela cheia)\b/],
+  ['unfocus', /\b(sair|menu)\b/],
 ];
 function matchCommand(alts) {
   const table = Pomo.onBreak ? BREAK_COMMANDS : S.pending ? CONFIRM_COMMANDS : COMMANDS;
@@ -1190,6 +1211,8 @@ function runCommand(k) {
     case 'smaller': return smaller();
     case 'cards': return setView('cards');
     case 'pdf': return setView('pdf');
+    case 'focus': return setFocus(true);
+    case 'unfocus': return setFocus(false);
   }
 }
 const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1291,9 +1314,9 @@ const GRAMMAR = [
   'continuar', 'seguir', 'bora', 'vamos', 'pausa', 'descansar', 'parar', 'acabou',
   'voltar', 'volta', 'próxima', 'anterior', 'avançar', 'descer', 'subir',
   'ler', 'repetir', 'silêncio', 'chega', 'arquivar', 'apagar', 'excluir', 'desfazer',
-  'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', '[unk]',
+  'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', 'foco', 'tela cheia', 'sair', 'menu', '[unk]',
 ];
-const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'read', 'stop', 'bigger', 'smaller', 'resume', 'cards', 'pdf']);
+const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'read', 'stop', 'bigger', 'smaller', 'resume', 'cards', 'pdf', 'focus', 'unfocus']);
 const LocalVoice = (() => {
   let model = null, rec = null, ctx = null, stream = null, src = null, node = null;
   let want = false, muted = false, consumed = 0, lastCandidate = null;
@@ -2183,11 +2206,12 @@ function bindUI() {
   };
   $('#btn-bigger').onclick = bigger;
   $('#btn-smaller').onclick = smaller;
-  $('#btn-full').onclick = () => {
-    const d = document, el = d.documentElement;
-    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-    else { const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) Promise.resolve(f.call(el)).catch(() => log('Tela cheia não disponível aqui. No iPhone, use “Adicionar à Tela de Início”.', 'warn')); else log('Tela cheia não disponível aqui. No iPhone, use “Adicionar à Tela de Início”.', 'warn'); }
-  };
+  $('#btn-full').onclick = () => setFocus(true);
+  $('#btn-unfocus').onclick = () => setFocus(false);
+  // leaving the browser's fullscreen (Esc, back gesture) also brings the menu back
+  const onFsChange = () => { if (!(document.fullscreenElement || document.webkitFullscreenElement)) setFocus(false); };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
   $('#pdf-prev').onclick = () => PDF.go(-1);
   $('#pdf-next').onclick = () => PDF.go(1);
   $('#pdf-up').onclick = () => scrollStage(-1);
