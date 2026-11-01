@@ -403,6 +403,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
           <div class="setting"><label for="set-voice">Reconhecimento de voz<small>“No aparelho” escuta sem pausas e funciona sem internet (baixa 32 MB na primeira vez). “Do navegador” usa o serviço do Safari/Chrome.</small></label><select id="set-voice"><option value="local">No aparelho</option><option value="browser">Do navegador</option></select></div>
           <div class="setting"><label for="set-shuffle">Ordem aleatória<small>Cards novos e revisões do dia embaralhados, em vez da ordem em que foram criados.</small></label><input type="checkbox" id="set-shuffle"></div>
           <div class="setting"><label for="set-read">Ler cards em voz alta<small>Lê a pergunta ao aparecer e a resposta ao revelar. Bom pra estudar de olhos fechados.</small></label><input type="checkbox" id="set-read"></div>
+          <div class="setting"><label for="set-lying">Modo deitado (só voz)<small>Lê o card; nos de Certo ou Errado você responde “certo” ou “errado”, ouve o gabarito e a explicação e diz “próximo”. Também liga dizendo “modo deitado”.</small></label><input type="checkbox" id="set-lying"></div>
           <div class="setting"><label for="set-tts">Voz da leitura<small>As melhores vêm primeiro. No iPhone, baixe uma voz melhor em Ajustes › Acessibilidade › Conteúdo Falado › Vozes › Português (Brasil) e reabra o app. No Android, as vozes “Google” soam mais naturais.</small></label><span class="sync-row" style="margin:0"><select id="set-tts"></select><button class="mini" id="tts-test" type="button">Ouvir</button></span></div>
           <div class="setting"><label for="set-rate">Velocidade da leitura: <span id="rate-val">1,0×</span></label><input type="range" id="set-rate" min="0.7" max="1.5" step="0.05"></div>
           <div class="setting"><label for="set-dwell">Clicar segurando a mira<small>Além da pinça: parar a mira 1 segundo em cima de um botão também clica.</small></label><input type="checkbox" id="set-dwell"></div>
@@ -540,7 +541,7 @@ function loadScript(src) {
 const S = {
   view: 'cards',
   decks: [], deckId: null, cards: [], prog: {}, daily: null, filter: '',
-  settings: { readAloud: false, ttsVoice: '', ttsRate: 1, dwell: false, swipe: true, shuffle: true, pomodoro: true, voiceEngine: 'local', retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
+  settings: { readAloud: false, lying: false, ttsVoice: '', ttsRate: 1, dwell: false, swipe: true, shuffle: true, pomodoro: true, voiceEngine: 'local', retention: 0.9, exams: {}, reach: 0.65, pinchSens: 0.2, newPerDay: 20, fontScale: 1, showCam: true, pdfInvert: false, syncToken: '', gistId: '' },
   cur: null, revealed: false, undo: null, lastId: null, waitTimer: null,
 };
 const saveSettings = () => DB.set('settings', S.settings);
@@ -861,7 +862,7 @@ function showCard() {
   renderCounts(q.counts);
   let card = q.order[0] || null;
   if (card && card.id === S.lastId && q.order.length > 1) card = q.order[1];
-  S.cur = card; S.revealed = false;
+  S.cur = card; S.revealed = false; S.lyingGrade = null;
   const holo = $('#holo');
   $('#face-a').hidden = true; $('#divider').hidden = true;
   if (!card) {
@@ -881,7 +882,8 @@ function showCard() {
     $('#card-state').textContent = (card.sub ? card.sub.split('::').pop() + ' · ' : '') + (!p || p.s === 'new' ? 'novo' : p.s === 'review' ? 'revisão · ' + fmtIn((p.ivl || 1) * DAY) : 'aprendendo') + (isLeech(p) ? ' · você erra sempre' : '');
     holo.scrollTop = 0;
     holo.classList.remove('in'); void holo.offsetWidth; holo.classList.add('in');
-    if (S.settings.readAloud) speak(textOf(card.front));
+    if (S.settings.lying) speak(textOf(card.front) + (gabOf(card) ? '. Certo ou errado?' : ''));
+    else if (S.settings.readAloud) speak(textOf(card.front));
   }
   setDock();
 }
@@ -895,11 +897,52 @@ function reveal() {
   const now = Date.now(), p = S.prog[S.cur.id];
   for (let g = 1; g <= 4; g++) $('#iv' + g).textContent = fmtIn(answer(p, g, now, S.cur.id).due - now);
   setDock();
-  if (S.settings.readAloud) speak(answerText(S.cur));
+  if (S.settings.lying) speak(lyingAnswerText(S.cur));
+  else if (S.settings.readAloud) speak(answerText(S.cur));
 }
 function answerText(card) { // only the part the learner hasn't heard yet
   const q = textOf(card.front), a = textOf(card.back);
   return card.full && a.startsWith(q) ? a.slice(q.length) : a;
+}
+
+/* Modo deitado: a whole round by voice, without touching the screen. The card is read aloud. On a
+   Certo/Errado card you answer "certo" or "errado": the app reveals it, says whether you got it right
+   and reads the explanation; "próximo" records Acertei or Errei ("dúvida" or "certeza" instead adjust
+   the grade). On other cards, "mostrar" reveals and reads the answer, and you grade with "certo" or "errado". */
+const gabOf = card => { const m = card && /\bak-gab-(CERTO|ERRADO)\b/.exec(card.back); return m ? m[1] : null; };
+function backText(card, selector) {
+  const d = document.createElement('div');
+  d.innerHTML = card.back;
+  return [...d.querySelectorAll(selector)].map(e => textOf(e.innerHTML)).filter(Boolean).join('. ');
+}
+function lyingAnswerText(card) {
+  const gab = gabOf(card), expl = backText(card, '.ak-expl');
+  if (gab && S.lyingGrade) return `${S.lyingGrade > 1 ? 'Acertou' : 'Errou'}. Gabarito: ${gab.toLowerCase()}. ${expl} Diga próximo.`;
+  if (gab) return `Gabarito: ${gab.toLowerCase()}. ${expl} Acertou? Diga certo ou errado.`;
+  const blanks = backText(card, '.cloze');
+  return `${blanks ? 'Resposta: ' + blanks + '.' : answerText(card)} ${expl} Acertou? Diga certo ou errado.`;
+}
+// waiting for "certo" or "errado" as the answer to the statement itself
+const lyingAsks = () => S.settings.lying && S.view === 'cards' && !!S.cur && !S.revealed && !!gabOf(S.cur);
+function answerCE(said) {
+  const gab = gabOf(S.cur);
+  if (!gab || S.revealed) return;
+  S.lyingGrade = said === gab ? 3 : 1;
+  log(`› você disse ${said.toLowerCase()} · gabarito ${gab.toLowerCase()}`);
+  reveal();
+}
+function lyingNext() {
+  if (!S.revealed) return reveal();
+  if (S.lyingGrade) return grade(S.lyingGrade);
+  speak('Acertou? Diga certo ou errado.');
+}
+function setLying(on) {
+  S.settings.lying = on; saveSettings();
+  $('#set-lying').checked = on;
+  if (!on) { stopSpeaking(); log('› modo deitado desligado'); return; }
+  log(Voice.on ? '› modo deitado: ouça o card e responda “certo” ou “errado”' : '› modo deitado ligado. Toque em Voz uma vez para começar.');
+  if (S.view !== 'cards') setView('cards');
+  if (S.cur && !S.revealed) speak(textOf(S.cur.front) + (gabOf(S.cur) ? '. Certo ou errado?' : ''));
 }
 function grade(g) {
   if (!S.cur) return;
@@ -1383,7 +1426,14 @@ const CONFIRM_COMMANDS = [
   ['cancel', /^(nao|cancelar|cancela|cancelado|deixa|esquece|pausa|pausar|descansar|parar)\b/],
 ];
 const BREAK_COMMANDS = [['resume', /\b(voltar|volta|continuar|continua|bora|vamos|acabou)\b/]];
+// in modo deitado, "certo" / "errado" on a Certo/Errado card is the answer, not a grade
+const LYING_ANSWERS = [
+  ['ansC', /^(e |esta )?(certo|certa|correto|correta)$/],
+  ['ansE', /^(e |esta )?(errado|errada|incorreto|incorreta)$/],
+];
 const COMMANDS = [
+  ['lyingOff', /\b(sair do modo deitado|desligar (o )?modo deitado|modo normal)\b/],
+  ['lyingOn', /\b(modo deitado|deitado)\b/],
   // checked before "parar" and "ler" so the longer phrases win
   ['readOn', /\b(ler em voz alta|em voz alta|ler sempre|ligar (a )?leitura)\b/],
   ['readOff', /\b(parar de ler|para de ler|nao ler|desligar (a )?leitura|sem leitura)\b/],
@@ -1413,7 +1463,7 @@ const COMMANDS = [
   ['unfocus', /\b(sair|menu)\b/],
 ];
 function matchCommand(alts) {
-  const table = Pomo.onBreak ? BREAK_COMMANDS : S.pending ? CONFIRM_COMMANDS : COMMANDS;
+  const table = Pomo.onBreak ? BREAK_COMMANDS : S.pending ? CONFIRM_COMMANDS : lyingAsks() ? [...LYING_ANSWERS, ...COMMANDS] : COMMANDS;
   for (const raw of alts) {
     const t = norm(raw);
     if (!t) continue;
@@ -1437,7 +1487,11 @@ function runCommand(k) {
     case 'easy': return v === 'cards' && grade(4);
     case 'undo': return v === 'cards' && undo();
     case 'more': return v === 'cards' && moreNew();
-    case 'next': if (v === 'pdf') PDF.go(1); else if (v === 'cards' && !S.revealed) reveal(); return;
+    case 'next': if (v === 'pdf') PDF.go(1); else if (v === 'cards' && S.settings.lying) lyingNext(); else if (v === 'cards' && !S.revealed) reveal(); return;
+    case 'ansC': return answerCE('CERTO');
+    case 'ansE': return answerCE('ERRADO');
+    case 'lyingOn': return setLying(true);
+    case 'lyingOff': return setLying(false);
     case 'prev': return v === 'pdf' && PDF.go(-1);
     case 'down': return scrollStage(1);
     case 'up': return scrollStage(-1);
@@ -1553,7 +1607,7 @@ const GRAMMAR = [
   'ler', 'repetir', 'silêncio', 'chega', 'arquivar', 'apagar', 'excluir', 'desfazer',
   'aumentar', 'diminuir', 'mais novos', 'pdf', 'cards', 'foco', 'tela cheia', 'sair', 'menu',
   'ler em voz alta', 'em voz alta', 'ler sempre', 'ligar leitura', 'parar de ler', 'para de ler', 'não ler', 'desligar leitura',
-  'trocar', 'lista', 'outra lei', '[unk]',
+  'trocar', 'lista', 'outra lei', 'próximo', 'correto', 'incorreto', 'modo deitado', 'deitado', 'sair do modo deitado', 'modo normal', '[unk]',
 ];
 // "ler" and "parar" wait for the end of the phrase: they start "ler em voz alta" and "parar de ler"
 const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down', 'up', 'bigger', 'smaller', 'resume', 'cards', 'pdf', 'pdfs', 'focus', 'unfocus']);
@@ -2608,6 +2662,8 @@ function bindUI() {
   const st = S.settings;
   const bindCheck = (id, key, after) => { const el = $(id); el.checked = !!st[key]; el.onchange = () => { st[key] = el.checked; saveSettings(); after && after(); }; };
   bindCheck('#set-shuffle', 'shuffle', () => { if (!S.revealed) showCard(); });
+  $('#set-lying').checked = !!st.lying;
+  $('#set-lying').onchange = e => setLying(e.target.checked);
   $('#set-read').checked = !!st.readAloud;
   $('#set-read').onchange = e => setReadAloud(e.target.checked);
   $('#btn-read').classList.toggle('on', !!st.readAloud);
