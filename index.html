@@ -78,6 +78,11 @@ button{cursor:pointer}
 .mini.danger{border-color:rgba(255,95,120,.35);color:var(--again)}
 .mini.air-hover{border-color:var(--line);color:var(--fg)}
 .archived{grid-column:1/-1;font-size:14px;color:var(--muted)}
+.subdecks{grid-column:1/-1;display:flex;flex-direction:column;margin-top:6px}
+.subdeck{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid var(--line-faint)}
+.subdeck .sd-name{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
+.subdeck .sd-meta{display:flex;gap:8px;font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.subdeck.active .sd-name{color:var(--line)}
 .archived summary{cursor:pointer;padding:4px 0}
 .archived ul{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
 .archived li{display:flex;gap:10px;align-items:center;justify-content:space-between}
@@ -128,21 +133,24 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 /* classes coming from imported Anki templates are prefixed with ak- */
 .face hr{border:0;border-top:1px solid var(--line-dim);width:60%;margin:.6em auto}
 .face ruby rt{font-size:.45em;color:var(--muted)}
-.face .ak-box,.face .ak-wrap{display:flex;flex-direction:column;align-items:center;gap:.45em}
-.face .ak-head,.face .ak-topo{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;font:500 13px var(--f-hud);letter-spacing:.08em;color:var(--muted);margin-bottom:.3em}
-.face .ak-tag{border:1px solid var(--line-dim);border-radius:3px;padding:1px 8px;color:var(--line);text-transform:uppercase}
-.face .ak-ask{font:500 .55em var(--f-hud);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.face .ak-jp{font-size:1.7em;line-height:1.3}
-.face .ak-big{font-size:2.6em;line-height:1.2}
-.face .ak-hl{color:var(--good);font-weight:600}
-.face .ak-read,.face .ak-rom{color:var(--muted);font-size:.8em}
-.face .ak-enunciado,.face .ak-texto{text-align:left;max-width:62ch;font-size:.85em}
-.face .ak-disp,.face .ak-ctx,.face .ak-expl{width:100%;max-width:62ch;text-align:left;font-size:.6em;line-height:1.6;padding:.7em .9em;border-left:2px solid var(--line-dim);background:rgba(63,216,255,.04)}
-.face .ak-expl{border-left-color:var(--hard)}
-.face .ak-lab,.face .ak-disp-tit,.face .ak-ctx-tit{font:600 11px var(--f-hud);letter-spacing:.2em;color:var(--line);text-transform:uppercase;margin-bottom:.3em}
-.face .ak-gab{font:600 1em var(--f-hud);letter-spacing:.14em}
-.face .ak-gab-CERTO{color:var(--good)}
-.face .ak-gab-ERRADO{color:var(--again)}
+.face:not(.themed) .ak-box,.face:not(.themed) .ak-wrap{display:flex;flex-direction:column;align-items:center;gap:.45em}
+.face:not(.themed) .ak-head,.face:not(.themed) .ak-topo{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;font:500 13px var(--f-hud);letter-spacing:.08em;color:var(--muted);margin-bottom:.3em}
+.face:not(.themed) .ak-tag{border:1px solid var(--line-dim);border-radius:3px;padding:1px 8px;color:var(--line);text-transform:uppercase}
+.face:not(.themed) .ak-ask{font:500 .55em var(--f-hud);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.face:not(.themed) .ak-jp{font-size:1.7em;line-height:1.3}
+.face:not(.themed) .ak-big{font-size:2.6em;line-height:1.2}
+.face:not(.themed) .ak-hl{color:var(--good);font-weight:600}
+.face:not(.themed) .ak-read,.face:not(.themed) .ak-rom{color:var(--muted);font-size:.8em}
+.face:not(.themed) .ak-enunciado,.face:not(.themed) .ak-texto{text-align:left;max-width:62ch;font-size:.85em}
+.face:not(.themed) .ak-disp,.face:not(.themed) .ak-ctx,.face:not(.themed) .ak-expl{width:100%;max-width:62ch;text-align:left;font-size:.6em;line-height:1.6;padding:.7em .9em;border-left:2px solid var(--line-dim);background:rgba(63,216,255,.04)}
+.face:not(.themed) .ak-expl{border-left-color:var(--hard)}
+.face:not(.themed) .ak-lab,.face:not(.themed) .ak-disp-tit,.face:not(.themed) .ak-ctx-tit{font:600 11px var(--f-hud);letter-spacing:.2em;color:var(--line);text-transform:uppercase;margin-bottom:.3em}
+.face:not(.themed) .ak-gab{font:600 1em var(--f-hud);letter-spacing:.14em}
+.face:not(.themed) .ak-gab-CERTO{color:var(--good)}
+.face:not(.themed) .ak-gab-ERRADO{color:var(--again)}
+/* cards with their note type's own CSS (Anki dark mode); A+/A− still scale them */
+.face.themed{text-align:left;width:100%}
+.face.themed .ak-card{zoom:var(--fs);border-radius:10px}
 .deck-sub{grid-column:1/-1;display:flex;gap:8px;align-items:center}
 .deck-sub select{flex:1;min-width:0;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:8px;color:var(--fg)}
 .deck-sub{flex-wrap:wrap;font-size:14px;color:var(--muted)}
@@ -702,6 +710,7 @@ async function openDeck(id, filter) {
   S.prog = await DB.get('prog:' + id) || {};
   S.filter = filter != null ? filter : await DB.get('filter:' + id) || '';
   S.undo = null;
+  applyNoteCss();
   DB.set('lastDeck', id); DB.set('filter:' + id, S.filter.startsWith('@') ? '' : S.filter); // focus modes are one-off
   $('#deck-name').textContent = (S.decks.find(d => d.id === id)?.name || '—') + (S.filter ? ' › ' + (SPECIAL_FILTERS[S.filter] || S.filter.split('::').pop()) : '');
   showCard();
@@ -818,6 +827,34 @@ async function restoreArchived(deckId, ids) {
   renderLib();
 }
 function renderCounts(c) { $('#c-new').textContent = c.n; $('#c-learn').textContent = c.l; $('#c-rev').textContent = c.r; }
+
+/* Note type CSS from Anki: scoped to the card (template classes carry the "ak-" prefix) and shown
+   with Anki's night mode classes, so the note type's own dark theme applies. */
+function scopeNoteCss(css, nt) {
+  const doc = document.implementation.createHTMLDocument('');
+  const style = doc.createElement('style');
+  style.textContent = css; doc.head.appendChild(style);
+  const fix = sel => sel.split(',').map(s => '.ak-nt-' + nt + ' ' + s.trim()
+    .replace(/(^|[\s>+~(])(html|body)(?=$|[\s.:#[>+~)])/g, '$1.ak-card').replace(/#qa\b/g, '.ak-card')
+    .replace(/\.(-?[_a-zA-Z][\w-]*)/g, (m, c) => c === 'cloze' ? m : '.ak-' + c)).join(', ');
+  const walk = rules => [...rules].map(r => r.selectorText != null ? fix(r.selectorText) + '{' + r.style.cssText + '}'
+    : r.media && r.cssRules ? '@media ' + r.media.mediaText + '{' + walk(r.cssRules) + '}' : r.cssText).join('\n');
+  return walk(style.sheet.cssRules);
+}
+function applyNoteCss() {
+  const deck = S.decks.find(d => d.id === S.deckId);
+  let el = $('#note-css');
+  if (!el) { el = document.createElement('style'); el.id = 'note-css'; document.head.appendChild(el); }
+  el.textContent = deck && deck.css ? Object.entries(deck.css).map(([nt, css]) => scopeNoteCss(css, nt)).join('\n') : '';
+}
+function fillFaces(card) {
+  const deck = S.decks.find(d => d.id === S.deckId);
+  const themed = !!(card.nt && deck && deck.css && deck.css[card.nt]);
+  const wrap = html => themed ? `<div class="ak-nt-${card.nt}"><div class="ak-nightMode ak-night_mode"><div class="ak-card ak-nightMode ak-night_mode">${html}</div></div></div>` : html;
+  for (const [sel, html] of [['#face-q', card.front], ['#face-a', card.back]]) {
+    const el = $(sel); el.innerHTML = wrap(html); el.classList.toggle('themed', themed);
+  }
+}
 function showCard() {
   clearTimeout(S.waitTimer);
   const q = currentQueue();
@@ -839,8 +876,7 @@ function showCard() {
     $('#card-state').textContent = '';
   } else {
     $('#empty').hidden = true; $('#face-q').hidden = false;
-    $('#face-q').innerHTML = card.front;
-    $('#face-a').innerHTML = card.back;
+    fillFaces(card);
     const p = S.prog[card.id];
     $('#card-state').textContent = (card.sub ? card.sub.split('::').pop() + ' · ' : '') + (!p || p.s === 'new' ? 'novo' : p.s === 'review' ? 'revisão · ' + fmtIn((p.ivl || 1) * DAY) : 'aprendendo') + (isLeech(p) ? ' · você erra sempre' : '');
     holo.scrollTop = 0;
@@ -891,7 +927,7 @@ function undo() {
   Sync.soon();
   const card = S.cards.find(c => c.id === u.id);
   showCard();
-  if (card) { S.cur = card; $('#face-q').hidden = false; $('#empty').hidden = true; $('#face-q').innerHTML = card.front; $('#face-a').innerHTML = card.back; S.revealed = false; reveal(); }
+  if (card) { S.cur = card; $('#face-q').hidden = false; $('#empty').hidden = true; fillFaces(card); S.revealed = false; reveal(); }
   log('› desfeito');
 }
 function moreNew() {
@@ -934,19 +970,23 @@ async function renderLib() {
       <div class="deck-actions"><button class="btn primary" data-air>Estudar</button><button class="btn danger" data-air>Apagar</button></div>`;
     row.querySelector('.deck-name').textContent = d.name;
     const [study, del] = row.querySelectorAll('button');
+    // each Anki subdeck is listed as a deck of its own, with its own counts, and studied on its own
     const subs = subdeckOptions(cards);
-    let sel = null;
     if (subs.length) {
-      const wrap = document.createElement('div');
-      wrap.className = 'deck-sub';
-      sel = document.createElement('select');
-      sel.id = 'sub-' + d.id;
-      sel.setAttribute('aria-label', 'Parte do baralho para estudar');
-      sel.add(new Option(`Baralho inteiro (${cards.length})`, ''));
-      for (const o of subs) sel.add(new Option('   '.repeat(o.depth) + o.label + ` (${o.n})`, o.value));
-      sel.value = d.id === S.deckId ? S.filter : await DB.get('filter:' + d.id) || '';
-      wrap.appendChild(sel);
-      row.appendChild(wrap);
+      study.textContent = 'Estudar tudo';
+      const box = document.createElement('div');
+      box.className = 'subdecks';
+      for (const o of subs) {
+        const sq = queue(cards.filter(c => inFilter(c, o.value)), prog, d.id);
+        const r = document.createElement('div');
+        r.className = 'subdeck' + (d.id === S.deckId && S.filter === o.value ? ' active' : '');
+        r.style.paddingLeft = o.depth * 16 + 'px';
+        r.innerHTML = `<span class="sd-name"></span><span class="sd-meta"><span class="st-new">${sq.counts.n}</span><span class="st-learn">${sq.counts.l}</span><span class="st-rev">${sq.counts.r}</span></span><button class="mini" data-air>Estudar</button>`;
+        r.querySelector('.sd-name').textContent = `${o.label} (${o.n})`;
+        r.querySelector('button').onclick = async () => { await openDeck(d.id, o.value); setView('cards'); };
+        box.appendChild(r);
+      }
+      row.appendChild(box);
     }
     const examRow = document.createElement('div');
     examRow.className = 'deck-sub';
@@ -979,7 +1019,7 @@ async function renderLib() {
       box.querySelector('ul + button').onclick = () => restoreArchived(d.id, archived.map(c => c.id));
       row.appendChild(box);
     }
-    study.onclick = async () => { await openDeck(d.id, sel ? sel.value : ''); setView('cards'); };
+    study.onclick = async () => { await openDeck(d.id, ''); setView('cards'); };
     del.onclick = () => {
       if (del.classList.contains('armed')) { deleteDeck(d.id); return; }
       del.classList.add('armed'); del.textContent = 'Confirmar';
@@ -1929,7 +1969,8 @@ function clean(html, media) {
 const safeDecode = s => { try { return decodeURIComponent(s); } catch (e) { return s; } };
 const CLOZE_RE = /\{\{c(\d+)::([\s\S]*?)(?:::([\s\S]*?))?\}\}/g;
 function cloze(txt, n, show) {
-  return txt.replace(CLOZE_RE, (m, num, ans, hint) => +num !== n ? ans : show ? `<span class="cloze">${ans}</span>` : `<span class="cloze">[${hint || '…'}]</span>`);
+  // data-cloze marks the hidden blank, as Anki does, so note type CSS can style it apart from the answer
+  return txt.replace(CLOZE_RE, (m, num, ans, hint) => +num !== n ? ans : show ? `<span class="cloze">${ans}</span>` : `<span class="cloze" data-cloze="">[${hint || '…'}]</span>`);
 }
 const clozeNums = txt => [...new Set([...txt.matchAll(CLOZE_RE)].map(m => +m[1]))].sort((a, b) => a - b);
 
@@ -2003,15 +2044,16 @@ function protoFields(b) { // generic protobuf reader: field number -> list of va
   }
   return out;
 }
-// note type id -> { fields: [names by ord], tmpls: {ord: {q, a}}, cloze }
+// note type id -> { fields: [names by ord], tmpls: {ord: {q, a}}, cloze, css }
 function readModels(q) {
   const models = {}, td = new TextDecoder(), str = v => v && v[0] ? td.decode(v[0]) : '';
-  const get = id => models[id] ||= { fields: [], tmpls: {}, cloze: false };
+  const get = id => models[id] ||= { fields: [], tmpls: {}, cloze: false, css: '' };
   const tmpl = q('SELECT ntid, ord, config FROM templates');
   if (tmpl) { // schema 18 (Anki 2.1.50+)
     for (const [ntid, ord, name] of q('SELECT ntid, ord, name FROM fields') || []) get(ntid).fields[ord] = name;
     for (const [ntid, ord, cfg] of tmpl) { const f = protoFields(cfg); get(ntid).tmpls[ord] = { q: str(f[1]), a: str(f[2]) }; }
-    for (const [id, cfg] of q('SELECT id, config FROM notetypes') || []) { const f = protoFields(cfg); if (models[id]) models[id].cloze = f[1] && f[1][0] === 1; }
+    // NotetypeConfig: 1 = kind (1 is cloze), 3 = css
+    for (const [id, cfg] of q('SELECT id, config FROM notetypes') || []) { const f = protoFields(cfg); if (models[id]) { models[id].cloze = f[1] && f[1][0] === 1; models[id].css = str(f[3]); } }
   } else { // older collections keep note types as JSON
     try {
       const j = JSON.parse(q('SELECT models FROM col')[0][0]);
@@ -2020,6 +2062,7 @@ function readModels(q) {
         for (const fl of j[k].flds || []) m.fields[fl.ord] = fl.name;
         for (const t of j[k].tmpls || []) m.tmpls[t.ord] = { q: t.qfmt, a: t.afmt };
         m.cloze = j[k].type === 1;
+        m.css = j[k].css || '';
       }
     } catch (e) {}
   }
@@ -2064,9 +2107,14 @@ function renderTemplate(tpl, fields, ctx) { // the subset of Anki's template lan
 }
 // Re-importing a deck with the same name updates it: new cards are added, deleted ones removed,
 // and for each card the schedule with more reviews wins (studied here or in Anki).
-async function upsertDeck(name, source, cards, prog, updatedAt = Date.now()) {
+async function upsertDeck(name, source, cards, prog, updatedAt = Date.now(), css) {
   const existing = S.decks.find(d => d.name === name && d.source === source);
-  if (!existing) return { id: await addDeck(name, cards, prog, source, updatedAt), isNew: true };
+  if (!existing) {
+    const id = await addDeck(name, cards, prog, source, updatedAt);
+    if (css) { S.decks.find(d => d.id === id).css = css; await saveDeckList(); if (id === S.deckId) applyNoteCss(); }
+    return { id, isNew: true };
+  }
+  if (css) existing.css = css;
   const oldCards = await DB.get('deck:' + existing.id) || [];
   const oldProg = existing.id === S.deckId ? S.prog : await DB.get('prog:' + existing.id) || {};
   const oldIds = new Set(oldCards.map(c => c.id)), newIds = new Set(cards.map(c => c.id));
@@ -2076,7 +2124,7 @@ async function upsertDeck(name, source, cards, prog, updatedAt = Date.now()) {
   await DB.set('prog:' + existing.id, merged);
   existing.count = cards.length; existing.updatedAt = updatedAt;
   await saveDeckList();
-  if (existing.id === S.deckId) { S.cards = cards; S.prog = merged; }
+  if (existing.id === S.deckId) { S.cards = cards; S.prog = merged; applyNoteCss(); }
   return { id: existing.id, isNew: false, added: cards.filter(c => !oldIds.has(c.id)).length, removed: oldCards.filter(c => !newIds.has(c.id)).length };
 }
 async function importApkg(file) {
@@ -2139,8 +2187,9 @@ async function importApkg(file) {
       } catch (e) {}
     }
 
-    // One HoloCards deck per top-level Anki deck; subdecks become a filter inside it.
-    const groups = new Map(); // top-level name -> {cards, prog}
+    // One HoloCards deck per top-level Anki deck; each subdeck is listed and studied on its own
+    // in the Library (stored as the card's "sub" path, so progress and sync stay per top-level deck).
+    const groups = new Map(); // top-level name -> {cards, prog, css}
     const now = Date.now();
     let skipped = 0;
     for (const [cid, nid, did, ord, type, queueN, due, ivl, factor, lapses, reps, mod] of rows) {
@@ -2166,10 +2215,12 @@ async function importApkg(file) {
         back = cloze(f[0], n, true) + f.slice(1).filter(x => x.trim()).map(x => '<hr class="fsep">' + x).join('');
       } else if (ord === 1 && f[1]) { front = f[1]; back = f[0]; }
       else { front = f[0]; back = f.slice(1).filter(x => x.trim()).join('<hr class="fsep">'); }
-      if (!groups.has(top)) groups.set(top, { cards: [], prog: {} });
+      if (!groups.has(top)) groups.set(top, { cards: [], prog: {}, css: {} });
       const g = groups.get(top);
       const id = 'a' + cid;
-      g.cards.push({ id, front: clean(front, media), back: clean(back, media), full, sub: rest.join('::') });
+      const card = { id, front: clean(front, media), back: clean(back, media), full, sub: rest.join('::') };
+      if (full && m.css) { card.nt = String(note.mid); g.css[card.nt] = m.css; } // rendered with its note type's CSS
+      g.cards.push(card);
       const ease = factor ? factor / 1000 : 2.5;
       const at = (mod || 0) * 1000; // when Anki last changed the card, so the newer review wins either way
       if (type === 2 && queueN >= 0) g.prog[id] = { s: 'review', ivl: Math.max(1, ivl), ease, due: (crt + due * 86400) * 1000, reps, lapses, at };
@@ -2180,7 +2231,7 @@ async function importApkg(file) {
     const ids = [], report = [];
     for (const [name, g] of groups) {
       if (!g.cards.length) continue;
-      const r = await upsertDeck(name, 'anki', g.cards, g.prog);
+      const r = await upsertDeck(name, 'anki', g.cards, g.prog, Date.now(), g.css);
       ids.push(r.id);
       report.push(r.isNew ? `${name}: ${g.cards.length} cards` : `${name}: ${r.added} novos, ${r.removed} removidos, progresso mantido`);
     }
@@ -2329,8 +2380,10 @@ const Sync = (() => {
         if (local && (local.updatedAt || 0) >= meta.updatedAt) continue;
         const f = gist.files[meta.file];
         if (!f) continue;
-        const cards = await unpackJson(await fileText(f));
-        await upsertDeck(name, meta.source || 'anki', cards, remote.prog[name] || {}, meta.updatedAt);
+        // a deck file is the card list, or { cards, css } when its note types bring their own CSS
+        const pack = await unpackJson(await fileText(f));
+        const cards = Array.isArray(pack) ? pack : pack.cards;
+        await upsertDeck(name, meta.source || 'anki', cards, remote.prog[name] || {}, meta.updatedAt, Array.isArray(pack) ? undefined : pack.css);
         touched = true; pulled++;
       }
 
@@ -2354,7 +2407,8 @@ const Sync = (() => {
         const rm = remote.decks[d.name];
         if (!rm || rm.deleted || (rm.updatedAt || 0) < (d.updatedAt || 0)) {
           const file = 'deck-' + fnv(d.name) + '.txt';
-          files[file] = { content: await packJson(await DB.get('deck:' + d.id) || []) };
+          const deckCards = await DB.get('deck:' + d.id) || [];
+          files[file] = { content: await packJson(d.css && Object.keys(d.css).length ? { cards: deckCards, css: d.css } : deckCards) };
           out.decks[d.name] = { file, updatedAt: d.updatedAt || Date.now(), count: d.count, source: d.source };
         }
       }
