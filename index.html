@@ -399,6 +399,10 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
             <div class="sync-row"><button class="btn primary" id="sync-now">Sincronizar agora</button><button class="btn danger" id="sync-off">Desconectar</button></div>
           </div>
           <p class="note" id="sync-status"></p>
+          <h2>Backup</h2>
+          <p class="note">Um arquivo com seus baralhos, todo o progresso, os PDFs e os ajustes (sem a chave do GitHub). Importar junta com o que já está no aparelho: em cada card vale a resposta mais recente.</p>
+          <div class="sync-row"><button class="btn" id="backup-export">Exportar backup</button><label class="btn">Importar backup<input type="file" id="backup-import" accept=".json,application/json" hidden></label></div>
+          <p class="note" id="backup-status"></p>
           <h2>Ajustes</h2>
           <div class="setting"><label for="set-voice">Reconhecimento de voz<small>“No aparelho” escuta sem pausas e funciona sem internet (baixa 32 MB na primeira vez). “Do navegador” usa o serviço do Safari/Chrome.</small></label><select id="set-voice"><option value="local">No aparelho</option><option value="browser">Do navegador</option></select></div>
           <div class="setting"><label for="set-shuffle">Ordem aleatória<small>Cards novos e revisões do dia embaralhados, em vez da ordem em que foram criados.</small></label><input type="checkbox" id="set-shuffle"></div>
@@ -2312,6 +2316,73 @@ function mergeProg(local, remote) {
   for (const k in remote) out[k] = newerEntry(local[k], remote[k]);
   return out;
 }
+
+/* ================= backup file =================
+   Everything needed to rebuild the study on another device or after a reset. Importing merges:
+   each card keeps its most recent answer, and a deck already newer here keeps its card list. */
+const BACKUP_KEEP_LOCAL = ['syncToken', 'gistId', 'voiceEngine', 'ttsVoice']; // secrets and per-device choices
+async function exportBackup() {
+  const st = $('#backup-status');
+  st.textContent = 'Preparando o backup…';
+  const decks = [];
+  for (const d of S.decks) {
+    if (d.source === 'exemplo') continue;
+    decks.push({ name: d.name, source: d.source, updatedAt: d.updatedAt, css: d.css, cards: await DB.get('deck:' + d.id) || [], prog: d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {} });
+  }
+  const pdfs = [];
+  for (const p of await Pdfs.list()) {
+    const data = !p.deleted && await DB.get('pdfdata:' + p.id);
+    if (data) pdfs.push({ name: p.name, at: p.at, data: toB64(data) });
+  }
+  const settings = { ...S.settings };
+  for (const k of BACKUP_KEEP_LOCAL) delete settings[k];
+  const body = JSON.stringify({ app: 'holocards', v: 1, at: Date.now(), decks, settings, pdfs, pdfpos: await Pdfs.pos() });
+  const file = new File([body], `holocards-backup-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
+  const done = () => { st.textContent = `Backup pronto: ${decks.length} baralho(s), ${pdfs.length} PDF(s), ${Math.max(1, Math.round(body.length / 1024))} KB.`; };
+  // on phones and tablets the share sheet saves it to Files or Drive; elsewhere it downloads
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Backup do HoloCards' }); return done(); }
+    catch (e) { if (e.name === 'AbortError') { st.textContent = ''; return; } }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  done();
+}
+async function importBackup(file) {
+  if (!file) return;
+  const st = $('#backup-status');
+  try {
+    const b = JSON.parse(await file.text());
+    if (b.app !== 'holocards' || !Array.isArray(b.decks)) throw new Error('esse arquivo não é um backup do HoloCards');
+    if (!confirm(`Importar o backup de ${new Date(b.at).toLocaleString('pt-BR')}? Ele se junta ao que já está aqui; em cada card vale a resposta mais recente.`)) return;
+    for (const d of b.decks) {
+      const here = S.decks.find(x => x.name === d.name && x.source === (d.source || 'anki'));
+      if (here && (here.updatedAt || 0) >= (d.updatedAt || 0)) {
+        const merged = mergeProg(here.id === S.deckId ? S.prog : await DB.get('prog:' + here.id) || {}, d.prog || {});
+        await DB.set('prog:' + here.id, merged);
+        if (here.id === S.deckId) S.prog = merged;
+      } else await upsertDeck(d.name, d.source || 'anki', d.cards, d.prog || {}, d.updatedAt || Date.now(), d.css);
+    }
+    const list = await Pdfs.list();
+    for (const p of b.pdfs || []) {
+      const here = list.find(x => x.name === p.name);
+      if (!here || (here.at || 0) < p.at) await Pdfs.put(p.name, fromB64(p.data).buffer, p.at);
+    }
+    const pos = await Pdfs.pos();
+    for (const [name, p] of Object.entries(b.pdfpos || {})) if (!pos[name] || p.at > pos[name].at) pos[name] = p;
+    await DB.set('pdfpos', pos);
+    const keep = {};
+    for (const k of BACKUP_KEEP_LOCAL) keep[k] = S.settings[k];
+    Object.assign(S.settings, b.settings || {}, keep);
+    saveSettings();
+    if (S.deckId) await openDeck(S.deckId, S.filter); else if (S.decks.length) await openDeck(S.decks[0].id);
+    renderLib();
+    Sync.soon(500);
+    st.textContent = `Backup importado: ${b.decks.length} baralho(s), ${(b.pdfs || []).length} PDF(s).`;
+  } catch (e) { st.textContent = 'Não consegui importar o backup: ' + e.message; }
+}
 function toB64(bytes) {
   const buf = new Uint8Array(bytes);
   let bin = '';
@@ -2658,6 +2729,8 @@ function bindUI() {
   $('#in-apkg').onchange = e => { importApkg(e.target.files[0]); e.target.value = ''; };
   $('#in-txt').onchange = e => { importText(e.target.files[0]); e.target.value = ''; };
   $('#in-pdf').onchange = $('#in-pdf2').onchange = e => { openPdfFiles([...e.target.files]); e.target.value = ''; };
+  $('#backup-export').onclick = () => exportBackup().catch(e => { $('#backup-status').textContent = 'Não consegui gerar o backup: ' + e.message; });
+  $('#backup-import').onchange = e => { importBackup(e.target.files[0]); e.target.value = ''; };
 
   const st = S.settings;
   const bindCheck = (id, key, after) => { const el = $(id); el.checked = !!st[key]; el.onchange = () => { st[key] = el.checked; saveSettings(); after && after(); }; };
@@ -2750,6 +2823,8 @@ async function init() {
   if (!Voice.supported) $('#btn-mic').title = 'Reconhecimento de voz indisponível neste navegador';
   Sync.ui('off', Sync.enabled ? '' : 'Ainda não conectado. Por enquanto o progresso fica só neste aparelho.');
   Sync.run();
+  // ask the browser not to evict the study data when the device is short on space
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && isSecureContext) {
     navigator.serviceWorker.register('sw.js').then(() => {
       // warm the cache with the import and PDF libraries so they also work offline later
