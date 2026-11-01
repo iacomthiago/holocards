@@ -401,7 +401,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
           <div class="setting"><label for="set-swipe">Passar a mão pra virar<small>Mão aberta passando de lado: vira página do PDF ou mostra a resposta.</small></label><input type="checkbox" id="set-swipe"></div>
           <div class="setting"><label for="set-reach">Alcance da mão<small>Menor = mexe menos a mão pra cruzar a tela inteira.</small></label><input type="range" id="set-reach" min="0.35" max="0.95" step="0.05"></div>
           <div class="setting"><label for="set-pinch">Sensibilidade da pinça<small>Pra esquerda: só clica com os dedos bem encostados. Pra direita: clica com menos esforço.</small></label><input type="range" id="set-pinch" min="0.12" max="0.32" step="0.02"></div>
-          <div class="setting"><label for="set-new">Cards novos por dia<small>Num baralho com data de prova, o app calcula sozinho.</small></label><input type="number" id="set-new" min="0" max="999"></div>
+          <div class="setting"><label for="set-new">Cards novos por dia<small>Vale também para baralhos com data de prova. Revisões não têm limite.</small></label><input type="number" id="set-new" min="0" max="999"></div>
           <div class="setting"><label for="set-retention">Retenção desejada: <span id="retention-val">90%</span><small>Chance de lembrar na hora da revisão. Mais alto = revisões mais frequentes.</small></label><input type="range" id="set-retention" min="0.85" max="0.95" step="0.01"></div>
           <div class="setting"><label for="set-pomodoro">Pausa a cada 25 minutos<small>Pergunta se quer continuar; sem resposta, faz 5 minutos de pausa e te chama de volta.</small></label><input type="checkbox" id="set-pomodoro"></div>
           <div class="setting"><label for="set-cam">Mostrar imagem da câmera</label><input type="checkbox" id="set-cam"></div>
@@ -626,11 +626,11 @@ const todayKey = () => { const d = new Date(Date.now() - 4 * HOUR); return d.get
 function endOfDay() { const d = new Date(Date.now() - 4 * HOUR); d.setHours(28, 0, 0, 0); return d.getTime(); } // day rolls over at 4h, like Anki
 function ensureDaily() { if (!S.daily || S.daily.date !== todayKey()) S.daily = { date: todayKey(), new: {}, extra: {} }; }
 const newLimit = id => S.settings.newPerDay + (S.daily.extra[id] || 0);
-// with an exam date, new cards per day are whatever it takes to see them all a week before the exam
-function examPlan(deckId, freshAtDayStart) {
+// days left until the deck's exam; new cards per day always follow the setting
+function examPlan(deckId) {
   const left = examDaysLeft((S.decks.find(d => d.id === deckId) || {}).name);
   if (!left) return null;
-  return { left, perDay: left > 7 ? Math.ceil(freshAtDayStart / (left - 7)) : 0 };
+  return { left, perDay: S.settings.newPerDay };
 }
 function recallNow(p, now) {
   if (!p || p.S == null || !p.last) return p && p.due ? Math.min(1, Math.max(0, 1 - (now - p.due) / (30 * DAY))) : 1;
@@ -662,10 +662,11 @@ function queue(cards, prog, deckId) {
   const dayStart = eod - DAY;
   let newToday = 0;
   for (const id in prog) if ((prog[id].first || 0) >= dayStart) newToday++;
-  const plan = examPlan(deckId, fresh.length + newToday);
+  const plan = examPlan(deckId);
   // final exam week: the reviews you are most likely to have forgotten come first
   if (plan && plan.left <= 7) rev.sort((a, b) => recallNow(prog[a.id], now) - recallNow(prog[b.id], now));
-  const newLeft = Math.max(0, (plan ? plan.perDay + (S.daily.extra[deckId] || 0) : newLimit(deckId)) - newToday);
+  // reviews have no daily cap; only new cards are limited
+  const newLeft = Math.max(0, newLimit(deckId) - newToday);
   const freshToday = fresh.slice(0, newLeft);
   return {
     order: [...learnNow, ...rev, ...freshToday, ...learnLater.filter(c => prog[c.id].due <= now + 20 * MIN)],
