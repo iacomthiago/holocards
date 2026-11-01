@@ -958,8 +958,10 @@ function grade(g) {
   const c = S.cur, before = S.prog[c.id], wasNew = !before || before.s === 'new', now = Date.now();
   S.undo = { id: c.id, before };
   const next = answer(before, g, now, c.id);
-  // a short answer history per card (synced with it) feeds the statistics
-  const h = [...((before && before.h) || []), [Math.round(now / 1000), g]].slice(-12);
+  // the answers of the last 90 days (at most 40, synced with the card) feed the statistics,
+  // so cards answered many times aren't undercounted
+  const since = Math.round(now / 1000) - 90 * 86400;
+  const h = [...((before && before.h) || []).filter(([t]) => t >= since), [Math.round(now / 1000), g]].slice(-40);
   S.prog[c.id] = { ...next, at: now, first: wasNew ? now : before.first, h, n: (next.n || 0) + 1, miss: (next.miss || 0) + (g === 1 ? 1 : 0) };
   Pomo.touch();
   DB.set('prog:' + S.deckId, S.prog);
