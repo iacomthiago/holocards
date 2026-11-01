@@ -1244,7 +1244,7 @@ function scrollStage(dir) {
 }
 
 /* ================= speech output ================= */
-const TTS = { voice: null, jaVoice: null, speaking: false, gen: 0 };
+const TTS = { voice: null, jaVoice: null, speaking: false, gen: 0, text: '' }; // text: what is being said (normalized)
 
 /* Natural neural voices (Piper, run inside the page with onnxruntime). The voice is downloaded once
    (~60 MB) into the browser's storage and then works offline. Japanese runs still use the system voice. */
@@ -1434,12 +1434,12 @@ function speak(text) {
   const parts = speechParts(text);
   if (!parts.length) return;
   const gen = TTS.gen;
-  TTS.speaking = true; Voice.pause();
-  const done = () => { if (gen !== TTS.gen) return; TTS.speaking = false; Voice.resume(); };
+  TTS.speaking = true; TTS.text = norm(text); Voice.pause();
+  const done = () => { if (gen !== TTS.gen) return; TTS.speaking = false; TTS.text = ''; Voice.resume(); };
   if (Neural.wanted()) Neural.speak(parts, gen).then(r => { if (r === 'fallback') speakSystem(parts, done); else if (r === 'done') done(); });
   else speakSystem(parts, done);
 }
-function stopSpeaking() { stopOutput(); TTS.speaking = false; Voice.resume(); }
+function stopSpeaking() { stopOutput(); TTS.speaking = false; TTS.text = ''; Voice.resume(); }
 function setReadAloud(on) {
   S.settings.readAloud = on; saveSettings();
   $('#set-read').checked = on;
@@ -1646,11 +1646,28 @@ const EARLY_COMMANDS = new Set(['reveal', 'again', 'hard', 'next', 'prev', 'down
 const LocalVoice = (() => {
   let model = null, rec = null, ctx = null, stream = null, src = null, node = null;
   let want = false, muted = false, consumed = 0, lastCandidate = null;
+  // While the app speaks, the microphone keeps listening for a short "próximo" or "parar" only.
+  // The app's own voice also reaches the microphone, so such a command must be a whole short phrase,
+  // heard with high confidence, and not a word the app is saying right now.
+  const BARGE = new Set(['next', 'stop']);
+  let bargeOnly = false, echoOpen = false, skipToFinal = false;
   const available = !!(window.WebAssembly && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext));
   const ui = s => { const b = $('#btn-mic'); b.classList.toggle('on', s === 'on'); b.classList.toggle('busy', s === 'busy'); };
+  function onBarge(words, final, detail) {
+    if (!final) { if (words.length) echoOpen = true; return; }
+    echoOpen = false;
+    const said = words.join(' '), cmd = words.length && words.length <= 2 && matchCommand([said]);
+    const sure = !detail || !detail.length || detail.every(w => (w.conf || 0) >= 0.9);
+    if (!cmd || !BARGE.has(cmd) || !sure || words.some(w => TTS.text.includes(w))) return;
+    log('ouvi “' + said + '”', 'heard');
+    runCommand(cmd);
+  }
   // partial results grow word by word within one utterance; only the words after the last command count
-  function onText(text, final) {
+  function onText(text, final, detail) {
     const words = norm(text).split(' ').filter(w => w && w !== 'unk');
+    if (bargeOnly) return onBarge(words, final, detail);
+    // the rest of a phrase that started while the app was speaking is the app's own voice
+    if (skipToFinal) { if (final) skipToFinal = false; return; }
     const fresh = words.slice(consumed);
     if (fresh.length) {
       const cmd = matchCommand([fresh.join(' ')]) || matchCommand([fresh.slice(-2).join(' ')]) || matchCommand([fresh.slice(-1).join(' ')]);
@@ -1690,8 +1707,9 @@ const LocalVoice = (() => {
       }
       if (!want) { teardown(); return true; }
       rec = new model.KaldiRecognizer(ctx.sampleRate, JSON.stringify(GRAMMAR));
+      try { rec.setWords(true); } catch (e) {} // per-word confidence, used while the app speaks
       rec.on('partialresult', m => onText(m.result.partial || '', false));
-      rec.on('result', m => onText(m.result.text || '', true));
+      rec.on('result', m => onText(m.result.text || '', true, m.result.result));
       src = ctx.createMediaStreamSource(stream);
       node = ctx.createScriptProcessor(ctx.sampleRate <= 16000 ? 2048 : 4096, 1, 1); // ~0.1 s of audio per chunk
       node.onaudioprocess = e => { if (!muted && rec) { try { rec.acceptWaveform(e.inputBuffer); } catch (err) {} } };
@@ -1711,8 +1729,8 @@ const LocalVoice = (() => {
     get on() { return want; },
     start,
     stop() { want = false; teardown(); ui('off'); log('› voz desligada'); },
-    pause() { muted = true; consumed = 0; lastCandidate = null; },
-    resume() { setTimeout(() => { muted = false; }, 300); }, // skip the tail of the app's own speech
+    pause() { bargeOnly = true; consumed = 0; lastCandidate = null; },
+    resume() { setTimeout(() => { if (!TTS.speaking) { bargeOnly = false; skipToFinal = echoOpen; echoOpen = false; } }, 300); }, // skip the tail of the app's own speech
   };
 })();
 
