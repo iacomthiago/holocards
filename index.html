@@ -1539,9 +1539,12 @@ function runCommand(k) {
     case 'delete': return v === 'cards' && askRemove('delete');
     case 'reveal': if (v === 'cards') S.revealed ? null : (reveal(), pressFx($('#btn-reveal'))); return;
     case 'again': return v === 'cards' && grade(1);
-    case 'hard': return v === 'cards' && grade(2);
-    case 'good': return v === 'cards' && grade(3);
-    case 'easy': return v === 'cards' && grade(4);
+    case 'hard': case 'good': case 'easy': {
+      if (v !== 'cards') return;
+      // modo deitado: a wrong answer to a Certo/Errado card stays Errei, whatever grade is said after it
+      if (S.settings.lying && S.revealed && S.lyingGrade === 1) { log('› você errou o gabarito: fica Errei'); return grade(1); }
+      return grade({ hard: 2, good: 3, easy: 4 }[k]);
+    }
     case 'undo': return v === 'cards' && undo();
     case 'more': return v === 'cards' && moreNew();
     case 'next': if (v === 'pdf') PDF.go(1); else if (v === 'cards' && S.settings.lying) lyingNext(); else if (v === 'cards' && !S.revealed) reveal(); return;
