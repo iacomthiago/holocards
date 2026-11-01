@@ -216,6 +216,9 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 .tile .s{font-size:13px;color:var(--muted)}
 .meter{height:6px;border-radius:3px;background:var(--line-faint);overflow:hidden;margin-top:4px}
 .meter i{display:block;height:100%;background:var(--line);border-radius:3px}
+.legend{display:flex;gap:16px;font-size:13px;color:var(--muted);margin:-4px 0 6px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend .lg-new::before{background:var(--new)}.legend .lg-rev::before{background:var(--rev)}
 .chart{position:relative;border:1px solid var(--line-dim);border-radius:6px;background:var(--panel);padding:10px 10px 4px}
 .chart svg{display:block;width:100%;height:auto;max-height:240px}
 .chart .tip{position:absolute;pointer-events:none;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:5px 8px;font:12px var(--f-mono);color:var(--fg);white-space:nowrap;transform:translate(-50%,-100%)}
@@ -344,12 +347,13 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
       <div class="stats-page">
         <div class="deckline"><span>Baralho <b id="stats-deck">—</b></span><span>troque de baralho na Biblioteca</span></div>
         <div class="tiles" id="stats-tiles"></div>
-        <h2>Respostas por dia · últimos 30 dias</h2>
+        <h2>Novos e revisões por dia · últimos 30 dias</h2>
+        <div class="legend"><span class="lg-new">Novos</span><span class="lg-rev">Revisões</span></div>
         <div class="chart" id="stats-chart"></div>
         <div class="stats-cols">
           <div>
-            <h2>Acerto por matéria · 30 dias</h2>
-            <p class="note">Da mais fraca pra mais forte. Só conta matéria com pelo menos 5 respostas.</p>
+            <h2>Taxa de acerto por baralho · 30 dias</h2>
+            <p class="note">Da mais fraca pra mais forte. Só conta baralho com pelo menos 5 respostas.</p>
             <div id="stats-subjects"></div>
             <div class="sync-row"><button class="btn primary" id="study-weak">Estudar as 3 mais fracas</button></div>
           </div>
@@ -1080,16 +1084,22 @@ async function renderStats() {
   const deck = S.decks.find(d => d.id === S.deckId);
   $('#stats-deck').textContent = deck ? deck.name : '—';
   const dayStart = endOfDay() - DAY, dayOf = t => Math.floor((t * 1000 - dayStart) / DAY); // 0 = today, -1 = yesterday
-  // answers per day over every deck, so the streak counts any study
+  // answers per day over every deck, so the streak counts any study. "nw" = cards seen for the first
+  // time that day; "rv" = answers to cards first seen on an earlier day (reviews)
   const perDay = new Map();
+  const dayEntry = i => { if (!perDay.has(i)) perDay.set(i, { n: 0, ok: 0, nw: 0, rv: 0 }); return perDay.get(i); };
   for (const d of S.decks) {
     const prog = d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {};
-    for (const id in prog) for (const [t, g] of prog[id].h || []) {
-      const i = dayOf(t);
-      if (i < -90 || i > 0) continue;
-      const e = perDay.get(i) || { n: 0, ok: 0 };
-      e.n++; if (g > 1) e.ok++;
-      perDay.set(i, e);
+    for (const id in prog) {
+      const p = prog[id], firstDay = p.first ? dayOf(p.first / 1000) : -Infinity;
+      if (firstDay >= -90 && firstDay <= 0) dayEntry(firstDay).nw++;
+      for (const [t, g] of p.h || []) {
+        const i = dayOf(t);
+        if (i < -90 || i > 0) continue;
+        const e = dayEntry(i);
+        e.n++; if (g > 1) e.ok++;
+        if (i > firstDay) e.rv++;
+      }
     }
   }
   const today = perDay.get(0) || { n: 0, ok: 0 };
@@ -1103,19 +1113,35 @@ async function renderStats() {
   const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
   const tile = (k, v, s, meter) => `<div class="tile"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${meter == null ? '' : `<div class="meter"><i style="width:${Math.min(100, Math.round(meter * 100))}%"></i></div>`}</div>`;
   const plan = full.plan;
+  // when the new cards run out at the configured pace (today's remaining quota included)
+  const fresh = S.cards.filter(c => { const p = S.prog[c.id]; return !p || p.s === 'new'; }).length;
+  const perDayNew = Math.max(1, S.settings.newPerDay);
+  const daysToFinish = Math.ceil(Math.max(0, fresh - full.counts.n) / perDayNew);
+  const finishDate = new Date(endOfDay() - DAY + daysToFinish * DAY);
+  const fmtDate = dt => dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  // studying new cards on the exam day itself doesn't count as finishing before it
+  const examDay = plan && deck && new Date(S.settings.exams[deck.name].date + 'T00:00:00');
+  const studyDays = plan ? Math.max(1, Math.round((examDay - (endOfDay() - DAY)) / DAY)) : 0; // days before the exam, today included
+  const forecast = !fresh ? tile('Novos acabam', '—', 'todos os cards já foram vistos')
+    : tile('Novos acabam', daysToFinish ? fmtDate(finishDate) : 'hoje', `${fresh} novos · ${S.settings.newPerDay} por dia` +
+      (plan ? (finishDate < examDay ? ' · antes da prova' : ` · na prova ou depois: seriam ${Math.ceil(fresh / studyDays)} por dia`) : ''));
   $('#stats-tiles').innerHTML =
     tile('Meta de hoje', `${doneHere}<small style="font-size:16px;color:var(--muted)"> / ${goal}</small>`, goal > doneHere ? `faltam ${goal - doneHere} neste baralho` : 'meta cumprida', goal ? doneHere / goal : 1) +
     tile('Hoje', today.n, today.n ? `respostas · ${pct(today.ok, today.n)} de acerto` : 'nenhuma resposta ainda') +
     tile('Sequência', streak, streak === 1 ? 'dia estudando' : 'dias seguidos') +
     (plan ? tile('Prova', plan.left, `dias · ${plan.perDay} novos por dia`) : tile('Prova', '—', 'defina a data na Biblioteca')) +
+    forecast +
     tile('Baralho visto', pct(seen, S.cards.length), `${seen} de ${S.cards.length} cards`, S.cards.length ? seen / S.cards.length : 0);
   drawDailyChart(perDay);
 
   const subjects = subjectStats(S.cards, S.prog), ranked = subjects.filter(s => s.answers >= 5);
   const box = $('#stats-subjects');
   box.textContent = '';
-  if (!ranked.length) box.innerHTML = '<p class="note">Responda alguns cards de cada matéria e o ranking aparece aqui.</p>';
-  for (const s of ranked) {
+  if (!ranked.length) box.innerHTML = '<p class="note">Responda alguns cards de cada baralho e o ranking aparece aqui.</p>';
+  // the whole deck first, then each subdeck from weakest to strongest
+  const sum = subjects.reduce((a, s) => ({ answers: a.answers + s.answers, correct: a.correct + s.correct, seen: a.seen + s.seen, total: a.total + s.total }), { answers: 0, correct: 0, seen: 0, total: 0 });
+  const rows = ranked.length && subjects.length > 1 && sum.answers ? [{ ...sum, label: (deck ? deck.name : 'Baralho') + ' (todos)', parent: '', acc: sum.correct / sum.answers }, ...ranked] : ranked;
+  for (const s of rows) {
     const row = document.createElement('div');
     row.className = 'subj';
     const level = s.acc < 0.7 ? 'lo' : s.acc < 0.85 ? 'mid' : 'hi';
@@ -1146,23 +1172,24 @@ async function renderStats() {
 }
 function drawDailyChart(perDay) {
   const days = 30, W = 600, H = 170, top = 14, base = 146, left = 30, right = 6;
-  const vals = Array.from({ length: days }, (_, k) => perDay.get(k - days + 1) || { n: 0, ok: 0 });
-  const max = Math.max(5, ...vals.map(v => v.n));
+  const vals = Array.from({ length: days }, (_, k) => perDay.get(k - days + 1) || { n: 0, ok: 0, nw: 0, rv: 0 });
+  const max = Math.max(5, ...vals.map(v => v.nw + v.rv));
   const slot = (W - left - right) / days, bw = Math.max(2, slot - 2); // 2px gap between bars
   const y = n => base - (n / max) * (base - top);
-  const bar = (x, h) => { // flat on the baseline, 4px rounded top
+  const bar = (x, from, h, cls, rounded) => { // reviews sit on the baseline, new cards on top; only the top end is rounded
     if (h <= 0) return '';
-    const r = Math.min(4, bw / 2, h), y0 = base - h;
-    return `<path class="bar" d="M${x},${base}V${y0 + r}Q${x},${y0} ${x + r},${y0}H${x + bw - r}Q${x + bw},${y0} ${x + bw},${y0 + r}V${base}Z"/>`;
+    const r = rounded ? Math.min(4, bw / 2, h) : 0, y0 = from - h;
+    return `<path class="${cls}" d="M${x},${from}V${y0 + r}Q${x},${y0} ${x + r},${y0}H${x + bw - r}Q${x + bw},${y0} ${x + bw},${y0 + r}V${from}Z"/>`;
   };
   let marks = '', hits = '';
   vals.forEach((v, k) => {
-    const x = left + k * slot + 1;
-    marks += bar(x, base - y(v.n));
+    const x = left + k * slot + 1, hr = base - y(v.rv), hn = base - y(v.nw);
+    marks += bar(x, base, hr, 'bar rv', !hn);
+    marks += bar(x, base - hr - (hr > 0 ? 2 : 0), hn - (hr > 0 && hn > 2 ? 2 : 0), 'bar nw', true); // 2px gap between the two
     hits += `<rect class="hit" data-k="${k}" x="${left + k * slot}" y="${top}" width="${slot}" height="${base - top + 20}"/>`;
   });
   const box = $('#stats-chart');
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Respostas por dia nos últimos 30 dias">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cards novos e revisões por dia nos últimos 30 dias">
     <line x1="${left}" x2="${W - right}" y1="${y(max)}" y2="${y(max)}" style="stroke:var(--line-faint);stroke-width:1"/>
     <line x1="${left}" x2="${W - right}" y1="${base}" y2="${base}" style="stroke:var(--line-dim);stroke-width:1"/>
     <text x="${left - 6}" y="${y(max) + 4}" text-anchor="end" style="fill:var(--muted);font:11px var(--f-mono)">${max}</text>
@@ -1170,14 +1197,15 @@ function drawDailyChart(perDay) {
     <text x="${left}" y="${H - 4}" style="fill:var(--muted);font:11px var(--f-mono)">30 dias atrás</text>
     <text x="${W - right}" y="${H - 4}" text-anchor="end" style="fill:var(--muted);font:11px var(--f-mono)">hoje</text>
     ${marks}${hits}</svg><div class="tip" hidden></div>`;
-  box.querySelectorAll('.bar').forEach(b => { b.style.fill = 'var(--line)'; });
+  box.querySelectorAll('.bar.rv').forEach(b => { b.style.fill = 'var(--rev)'; });
+  box.querySelectorAll('.bar.nw').forEach(b => { b.style.fill = 'var(--new)'; });
   box.querySelectorAll('.hit').forEach(h => { h.style.fill = 'transparent'; });
   const tip = box.querySelector('.tip'), svg = box.querySelector('svg');
   const show = e => {
     const hit = e.target.closest && e.target.closest('.hit');
     if (!hit) { tip.hidden = true; return; }
     const k = +hit.dataset.k, v = vals[k], d = new Date(endOfDay() - DAY * (days - k));
-    tip.textContent = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${v.n} respostas${v.n ? ` · ${Math.round(100 * v.ok / v.n)}% acerto` : ''}`;
+    tip.textContent = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${v.nw} novos · ${v.rv} revisões${v.n ? ` · ${Math.round(100 * v.ok / v.n)}% acerto` : ''}`;
     const r = svg.getBoundingClientRect(), bx = box.getBoundingClientRect();
     tip.style.left = Math.min(bx.width - 80, Math.max(80, (left + (k + 0.5) * slot) / W * r.width + (r.left - bx.left))) + 'px';
     tip.style.top = (y(v.n) / H * r.height + (r.top - bx.top) - 6) + 'px';
