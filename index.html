@@ -2430,9 +2430,14 @@ async function unpackJson(b64) {
   const stream = new Blob([fromB64(b64)]).stream().pipeThrough(new DecompressionStream('gzip'));
   return JSON.parse(await new Response(stream).text());
 }
+/* To keep mobile data low: the main gist holds only one compressed file (decks list + progress),
+   deck files live in a second gist and are fetched by their exact version only when they change,
+   and the main file is requested with its ETag, so an unchanged gist answers 304 with no body.
+   Older versions kept plain JSON plus the deck files in the main gist; that layout is read once
+   and migrated. */
 const Sync = (() => {
-  const API = 'https://api.github.com', MAIN = 'holocards.json';
-  let busy = false, again = false, timer = null, last = 0, tombstones = null;
+  const API = 'https://api.github.com', MAIN = 'holocards.v2.txt', LEGACY_MAIN = 'holocards.json';
+  let busy = false, again = false, timer = null, timerDue = 0, last = 0, tombstones = null, cache;
   const enabled = () => !!S.settings.syncToken;
   function ui(state, text) {
     const b = $('#btn-sync');
@@ -2441,27 +2446,57 @@ const Sync = (() => {
     if (text) $('#sync-status').textContent = text;
     $('#sync-connected').hidden = !enabled(); $('#sync-setup').hidden = enabled();
   }
+  // opts.etag sends If-None-Match (null comes back on 304); opts.full returns { json, etag }
   async function gh(path, opts = {}) {
     const headers = { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + S.settings.syncToken };
     if (opts.body) headers['Content-Type'] = 'application/json';
-    const r = await fetch(API + path, { ...opts, headers, cache: 'no-store' });
+    if (opts.etag) headers['If-None-Match'] = opts.etag;
+    const r = await fetch(API + path, { method: opts.method, body: opts.body, headers, cache: 'no-store' });
+    if (r.status === 304) return null;
     if (r.status === 401) throw Object.assign(new Error('a chave do GitHub é inválida ou expirou. Gere outra e conecte de novo.'), { fatal: true });
     if (!r.ok) throw Object.assign(new Error('o GitHub respondeu ' + r.status), { status: r.status });
-    return r.json();
+    const json = await r.json();
+    return opts.full ? { json, etag: r.headers.get('ETag') } : json;
   }
   const fileText = async f => !f ? null : f.truncated ? (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
+  // remote state, from the cache when the gist didn't change since the last sync
+  async function loadRemote(id) {
+    if (cache === undefined) cache = await DB.get('syncCache') || null;
+    const res = await gh('/gists/' + id, { etag: cache && cache.id === id ? cache.etag : null, full: true });
+    if (!res) return { remote: structuredClone(cache.remote), legacy: null };
+    const files = res.json.files || {};
+    let remote = {}, legacy = null;
+    if (files[MAIN]) remote = await unpackJson(await fileText(files[MAIN]));
+    if (files[LEGACY_MAIN]) {
+      // old layout, or a device still on the old version wrote to it: its progress is merged in
+      const old = JSON.parse(await fileText(files[LEGACY_MAIN]) || '{}');
+      if (!files[MAIN]) remote = old;
+      else for (const [name, p] of Object.entries(old.prog || {})) (remote.prog ||= {})[name] = mergeProg(remote.prog[name] || {}, p);
+      legacy = files;
+    }
+    cache = { id, etag: legacy ? null : res.etag, remote };
+    DB.set('syncCache', cache);
+    return { remote: structuredClone(remote), legacy };
+  }
   async function findGist() {
     if (S.settings.gistId) {
-      try { return await gh('/gists/' + S.settings.gistId); } catch (e) { if (e.status !== 404) throw e; }
+      try { return { id: S.settings.gistId, ...await loadRemote(S.settings.gistId) }; } catch (e) { if (e.status !== 404) throw e; }
     }
     const list = await gh('/gists?per_page=100');
-    const found = list.find(g => g.files && g.files[MAIN]);
-    const gist = found ? await gh('/gists/' + found.id) : await gh('/gists', {
-      method: 'POST',
-      body: JSON.stringify({ description: 'HoloCards: progresso sincronizado entre aparelhos', public: false, files: { [MAIN]: { content: JSON.stringify({ v: 1, decks: {}, prog: {} }) } } }),
-    });
-    S.settings.gistId = gist.id; saveSettings();
-    return gist;
+    const found = list.find(g => g.files && (g.files[MAIN] || g.files[LEGACY_MAIN]));
+    let id = found && found.id;
+    if (!id) {
+      const g = await gh('/gists', {
+        method: 'POST',
+        body: JSON.stringify({ description: 'HoloCards: progresso sincronizado entre aparelhos', public: false, files: { [MAIN]: { content: await packJson({ v: 2, decks: {}, prog: {} }) } } }),
+      });
+      id = g.id;
+    }
+    S.settings.gistId = id; saveSettings();
+    return { id, ...await loadRemote(id) };
+  }
+  async function newGist(description) {
+    return (await gh('/gists', { method: 'POST', body: JSON.stringify({ description, public: false, files: { 'leia-me.txt': { content: description } } }) })).id;
   }
   /* PDFs live in a second gist so the regular sync stays small. The main file lists each one with
      the address of its exact uploaded version, so other devices download only what changed. */
@@ -2494,10 +2529,7 @@ const Sync = (() => {
       out.pdfs[p.name] = { file, at: p.at, size: p.size };
     }
     if (Object.keys(files).length) {
-      if (!out.pdfGist) {
-        const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'HoloCards: PDFs', public: false, files: { 'leia-me.txt': { content: 'PDFs guardados pelo HoloCards.' } } }) });
-        out.pdfGist = g.id;
-      }
+      if (!out.pdfGist) out.pdfGist = await newGist('HoloCards: PDFs');
       const res = await gh('/gists/' + out.pdfGist, { method: 'PATCH', body: JSON.stringify({ files }) });
       for (const m of Object.values(out.pdfs)) if (m.file && files[m.file] && res.files[m.file]) m.raw = res.files[m.file].raw_url;
     }
@@ -2518,9 +2550,9 @@ const Sync = (() => {
     busy = true; ui('busy', 'Sincronizando…');
     try {
       tombstones ||= await DB.get('tombstones') || [];
-      const gist = await findGist();
-      const remote = JSON.parse(await fileText(gist.files[MAIN]) || '{}');
+      const gist = await findGist(), remote = gist.remote, legacy = gist.legacy;
       remote.decks ||= {}; remote.prog ||= {};
+      const before = JSON.stringify(remote);
       let touched = false, pulled = 0;
 
       // 1. decks imported or deleted on another device
@@ -2531,10 +2563,10 @@ const Sync = (() => {
           continue;
         }
         if (local && (local.updatedAt || 0) >= meta.updatedAt) continue;
-        const f = gist.files[meta.file];
-        if (!f) continue;
         // a deck file is the card list, or { cards, css } when its note types bring their own CSS
-        const pack = await unpackJson(await fileText(f));
+        const packed = meta.raw ? await (await fetch(meta.raw, { cache: 'no-store' })).text() : legacy && await fileText(legacy[meta.file]);
+        if (!packed) continue;
+        const pack = await unpackJson(packed);
         const cards = Array.isArray(pack) ? pack : pack.cards;
         await upsertDeck(name, meta.source || 'anki', cards, remote.prog[name] || {}, meta.updatedAt, Array.isArray(pack) ? undefined : pack.css);
         touched = true; pulled++;
@@ -2545,8 +2577,9 @@ const Sync = (() => {
       const exams = { ...(remote.exams || {}) };
       for (const [k, e] of Object.entries(S.settings.exams || {})) if (!exams[k] || (e.at || 0) > (exams[k].at || 0)) exams[k] = e;
       if (JSON.stringify(exams) !== JSON.stringify(S.settings.exams || {})) { S.settings.exams = exams; saveSettings(); touched = true; }
-      const out = { v: 1, decks: { ...remote.decks }, prog: { ...remote.prog }, exams };
-      const files = {};
+      const out = { v: 2, decks: { ...remote.decks }, prog: { ...remote.prog }, exams };
+      if (remote.deckGist) out.deckGist = remote.deckGist;
+      const files = {}; // deck files, uploaded to the deck gist (a deck without "raw" is still in the old layout)
       for (const d of S.decks) {
         if (d.source === 'exemplo') continue;
         const local = d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {};
@@ -2557,8 +2590,8 @@ const Sync = (() => {
           touched = true;
         }
         out.prog[d.name] = merged;
-        const rm = remote.decks[d.name];
-        if (!rm || rm.deleted || (rm.updatedAt || 0) < (d.updatedAt || 0)) {
+        const rm = out.decks[d.name];
+        if (!rm || rm.deleted || !rm.raw || (rm.updatedAt || 0) < (d.updatedAt || 0)) {
           const file = 'deck-' + fnv(d.name) + '.txt';
           const deckCards = await DB.get('deck:' + d.id) || [];
           files[file] = { content: await packJson(d.css && Object.keys(d.css).length ? { cards: deckCards, css: d.css } : deckCards) };
@@ -2571,10 +2604,18 @@ const Sync = (() => {
       }
       if (await syncPdfs(remote, out)) touched = true;
 
-      const text = JSON.stringify(out);
-      if (Object.keys(files).length || text !== JSON.stringify(remote)) {
-        files[MAIN] = { content: text };
-        await gh('/gists/' + gist.id, { method: 'PATCH', body: JSON.stringify({ files }) });
+      if (Object.keys(files).length) {
+        out.deckGist ||= await newGist('HoloCards: baralhos');
+        const res = await gh('/gists/' + out.deckGist, { method: 'PATCH', body: JSON.stringify({ files }) });
+        for (const m of Object.values(out.decks)) if (m.file && files[m.file] && res.files[m.file]) m.raw = res.files[m.file].raw_url;
+      }
+      if (legacy || JSON.stringify(out) !== before) {
+        const mainFiles = { [MAIN]: { content: await packJson(out) } };
+        // the old layout's files leave the main gist, so every later request stays small
+        if (legacy) for (const name of Object.keys(legacy)) if (name !== MAIN) mainFiles[name] = null;
+        const res = await gh('/gists/' + gist.id, { method: 'PATCH', body: JSON.stringify({ files: mainFiles }), full: true });
+        cache = { id: gist.id, etag: res.etag, remote: out };
+        DB.set('syncCache', cache);
       }
       if (tombstones.length) { tombstones = []; DB.set('tombstones', []); }
       last = Date.now();
@@ -2592,7 +2633,16 @@ const Sync = (() => {
       if (again) { again = false; soon(1500); }
     }
   }
-  function soon(ms = 4000) { if (!enabled()) return; clearTimeout(timer); timer = setTimeout(run, ms); }
+  // Progress changes are batched (by default up to 2 minutes; leaving the app sends them at once);
+  // a later request never postpones a sync that is already due sooner.
+  function soon(ms = 2 * MIN) {
+    if (!enabled()) return;
+    const due = Date.now() + ms;
+    if (timer && timerDue <= due) return;
+    clearTimeout(timer);
+    timerDue = due;
+    timer = setTimeout(() => { timer = null; run(); }, ms);
+  }
   return {
     run, soon,
     get enabled() { return enabled(); },
@@ -2613,7 +2663,7 @@ const Sync = (() => {
       saveSettings();
       await run();
     },
-    disconnect() { S.settings.syncToken = ''; S.settings.gistId = ''; saveSettings(); ui('off', 'Desconectado. O progresso continua salvo neste aparelho.'); },
+    disconnect() { S.settings.syncToken = ''; S.settings.gistId = ''; saveSettings(); cache = null; DB.del('syncCache'); ui('off', 'Desconectado. O progresso continua salvo neste aparelho.'); },
   };
 })();
 
