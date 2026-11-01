@@ -1008,10 +1008,11 @@ function setView(v) {
   if (v === 'pdf') { if (PDF.doc) PDF.render(); else showPdfPicker(true); }
   setDock();
 }
+let libRender = 0;
 async function renderLib() {
-  const list = $('#deck-list');
-  list.textContent = '';
-  if (!S.decks.length) { list.innerHTML = '<p class="note">Nenhum baralho ainda.</p>'; }
+  // renders can overlap (a sync finishing while the Library opens): only the latest one is shown
+  const token = ++libRender, list = $('#deck-list'), rows = document.createDocumentFragment();
+  if (!S.decks.length) { list.innerHTML = '<p class="note">Nenhum baralho ainda.</p>'; return; }
   for (const d of S.decks) {
     const cards = d.id === S.deckId ? S.cards : await DB.get('deck:' + d.id) || [];
     const prog = d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {};
@@ -1023,18 +1024,33 @@ async function renderLib() {
       <div class="deck-actions"><button class="btn primary" data-air>Estudar</button><button class="btn danger" data-air>Apagar</button></div>`;
     row.querySelector('.deck-name').textContent = d.name;
     const [study, del] = row.querySelectorAll('button');
-    // each Anki subdeck is listed as a deck of its own, with its own counts, and studied on its own
+    // each Anki subdeck is listed as a deck of its own, with its own counts, and studied on its own.
+    // The counts split today's queue of the whole deck, so they add up to the deck's totals
+    // (the daily new-card limit is shared by all its subdecks).
     const subs = subdeckOptions(cards);
     if (subs.length) {
       study.textContent = 'Estudar tudo';
+      const freshToday = new Set(q.order.filter(c => !prog[c.id] || prog[c.id].s === 'new').map(c => c.id));
+      const eod = endOfDay(), counts = new Map();
+      for (const c of cards) {
+        const p = prog[c.id];
+        const kind = freshToday.has(c.id) ? 'n' : !p || p.due > eod ? null : p.s === 'review' ? 'r' : p.s === 'learn' || p.s === 'relearn' ? 'l' : null;
+        if (!kind || !c.sub) continue;
+        const parts = c.sub.split('::');
+        for (let i = 1; i <= parts.length; i++) {
+          const k = parts.slice(0, i).join('::');
+          if (!counts.has(k)) counts.set(k, { n: 0, l: 0, r: 0 });
+          counts.get(k)[kind]++;
+        }
+      }
       const box = document.createElement('div');
       box.className = 'subdecks';
       for (const o of subs) {
-        const sq = queue(cards.filter(c => inFilter(c, o.value)), prog, d.id);
+        const sc = counts.get(o.value) || { n: 0, l: 0, r: 0 };
         const r = document.createElement('div');
         r.className = 'subdeck' + (d.id === S.deckId && S.filter === o.value ? ' active' : '');
         r.style.paddingLeft = o.depth * 16 + 'px';
-        r.innerHTML = `<span class="sd-name"></span><span class="sd-meta"><span class="st-new">${sq.counts.n}</span><span class="st-learn">${sq.counts.l}</span><span class="st-rev">${sq.counts.r}</span></span><button class="mini" data-air>Estudar</button>`;
+        r.innerHTML = `<span class="sd-name"></span><span class="sd-meta"><span class="st-new">${sc.n}</span><span class="st-learn">${sc.l}</span><span class="st-rev">${sc.r}</span></span><button class="mini" data-air>Estudar</button>`;
         r.querySelector('.sd-name').textContent = `${o.label} (${o.n})`;
         r.querySelector('button').onclick = async () => { await openDeck(d.id, o.value); setView('cards'); };
         box.appendChild(r);
@@ -1078,8 +1094,9 @@ async function renderLib() {
       del.classList.add('armed'); del.textContent = 'Confirmar';
       setTimeout(() => { del.classList.remove('armed'); del.textContent = 'Apagar'; }, 4000);
     };
-    list.appendChild(row);
+    rows.appendChild(row);
   }
+  if (token === libRender) list.replaceChildren(rows);
 }
 /* ================= statistics ================= */
 async function renderStats() {
