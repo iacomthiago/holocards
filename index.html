@@ -1647,8 +1647,12 @@ const BrowserVoice = (() => {
    decoded inside the page, restricted to the command words. No gaps between phrases, no internet
    needed after the first download, and it works where the browser has no speech service (Quest). */
 const VOSK_LIB = 'https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js';
-// hosted by the library's author; downloaded once, then kept in the browser's storage
-const VOSK_MODEL = 'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-pt-0.3.tar.gz';
+// Downloaded once, then kept in the browser's storage (by address). First the library author's copy,
+// which devices already have stored; if it ever goes offline, the copy in this project's GitHub account.
+const VOSK_MODELS = [
+  'https://ccoreilly.github.io/vosk-browser/models/vosk-model-small-pt-0.3.tar.gz',
+  'https://iacomthiago.github.io/vosk-browser/models/vosk-model-small-pt-0.3.tar.gz',
+];
 const GRAMMAR = [
   'mostrar', 'mostra', 'mostre', 'virar', 'vira', 'vire', 'resposta', 'revelar', 'abrir', 'ver',
   'errei', 'errado', 'errada', 'não sei', 'não lembro', 'esqueci', 'de novo', 'outra vez',
@@ -1726,7 +1730,17 @@ const LocalVoice = (() => {
       if (!model) {
         log('› preparando a voz no aparelho. Na primeira vez baixa 32 MB, depois funciona até sem internet…');
         await loadScript(VOSK_LIB);
-        model = await Vosk.createModel(VOSK_MODEL);
+        // the library waits forever on a missing address, so with internet each one is checked first;
+        // offline, the stored copy of the first one is used
+        for (const url of VOSK_MODELS) {
+          const last = url === VOSK_MODELS[VOSK_MODELS.length - 1];
+          if (!last && navigator.onLine) {
+            const up = await fetch(url, { method: 'HEAD', cache: 'no-store' }).then(r => r.ok, () => null);
+            if (up === false) continue;
+          }
+          try { model = await Vosk.createModel(url); break; }
+          catch (e) { if (last) throw e instanceof Error ? e : new Error('modelo de voz indisponível'); }
+        }
       }
       if (!want) { teardown(); return true; }
       rec = new model.KaldiRecognizer(ctx.sampleRate, JSON.stringify(GRAMMAR));
