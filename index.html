@@ -1261,6 +1261,10 @@ const Neural = (() => {
   let actx = null, src = null, lock = Promise.resolve();
   const wanted = () => S.settings.ttsVoice in NEURAL_VOICES;
   function audio() {
+    // the iPhone mutes page audio with the silent switch unless the page plays as a media player
+    // (iOS 17+). With the microphone open the system already plays it, so only touch it when voice is off.
+    const as = navigator.audioSession;
+    if (as && !Voice.on && as.type !== 'playback') { try { as.type = 'playback'; } catch (e) {} }
     if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state === 'suspended') actx.resume();
     return actx;
@@ -1740,6 +1744,9 @@ const Voice = (() => {
     supported: LocalVoice.available || BrowserVoice.supported,
     get on() { return !!engine && engine.on; },
     async start() {
+      // a "playback" audio session (set for the neural voice) would block the microphone
+      const as = navigator.audioSession;
+      if (as && as.type === 'playback') { try { as.type = 'auto'; } catch (e) {} }
       if (S.settings.voiceEngine !== 'browser' && LocalVoice.available) {
         engine = LocalVoice;
         if (await LocalVoice.start()) return;
