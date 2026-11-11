@@ -910,6 +910,16 @@ function reveal() {
   if (S.settings.lying) speak(lyingAnswerText(S.cur));
   else if (S.settings.readAloud) speak(answerText(S.cur));
 }
+// a tap on the card shows the answer; another tap goes back to the question, and so on (no grade)
+function flipCard() {
+  if (!S.cur) return;
+  if (!S.revealed) return reveal();
+  const showingAnswer = !$('#face-a').hidden;
+  $('#face-a').hidden = showingAnswer;
+  if (S.cur.full) $('#face-q').hidden = !showingAnswer;
+  else $('#divider').hidden = showingAnswer;
+  $('#holo').scrollTop = 0;
+}
 function answerText(card) { // only the part the learner hasn't heard yet
   const q = textOf(card.front), a = textOf(card.back);
   return card.full && a.startsWith(q) ? a.slice(q.length) : a;
@@ -2829,6 +2839,8 @@ setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 1
 function bindUI() {
   for (const t of $$('.tab')) t.onclick = () => setView(t.dataset.view);
   $('#btn-reveal').onclick = reveal;
+  // links, buttons and selecting text inside the card keep working as usual
+  $('#holo').onclick = e => { if (!e.target.closest('a,button,input,select,label') && !String(getSelection())) flipCard(); };
   for (const b of $$('[data-grade]')) b.onclick = () => grade(+b.dataset.grade);
   $('#btn-more').onclick = moreNew;
   $('#btn-tolib').onclick = () => setView('lib');
