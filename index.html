@@ -1721,6 +1721,8 @@ const LocalVoice = (() => {
         log('ouvi “' + fresh.join(' ') + '”', 'heard');
         runCommand(cmd);
       } else lastCandidate = key;
+      // shows that the microphone hears, even when the phrase is not a command
+      if (final && !cmd) log('ouvi “' + fresh.join(' ') + '” (não é um comando)', 'heard');
     }
     if (final) { consumed = 0; lastCandidate = null; }
   }
@@ -1731,14 +1733,26 @@ const LocalVoice = (() => {
     try { ctx && ctx.close(); } catch (e) {}
     node = src = stream = rec = ctx = null;
   }
-  async function start() {
-    want = true; muted = false; consumed = 0;
+  // A microphone blocked by the system (Android's "Microphone access" toggle, or the browser put to
+  // sleep by battery saving) still opens, but delivers pure silence. A few seconds after starting,
+  // pure silence is retried once at the device's own sample rate, then reported on screen.
+  let peak = 0, silenceCheck = null;
+  function checkSilence(native) {
+    clearTimeout(silenceCheck);
+    silenceCheck = setTimeout(() => {
+      if (!want || peak > 0) return;
+      if (!native && !IOS) { teardown(); start(true); return; }
+      log('O microfone está ligado mas não chega som. No tablet, confira o atalho “Acesso ao microfone” no painel rápido, a permissão de microfone do Chrome e se o Chrome não está em “apps em suspensão” na bateria.', 'warn');
+    }, 4000);
+  }
+  async function start(native = false) {
+    want = true; muted = false; consumed = 0; peak = 0;
     ui('busy');
     // The audio context is created inside the tap, as iPhone requires. Elsewhere it runs at the
     // model's 16 kHz so the browser resamples natively and slower tablets keep up; Safari keeps
     // its own rate because it struggles to feed the microphone into a resampled context.
     const AC = window.AudioContext || window.webkitAudioContext;
-    try { ctx = IOS ? new AC() : new AC({ sampleRate: 16000 }); } catch (e) { ctx = new AC(); }
+    try { ctx = IOS || native ? new AC() : new AC({ sampleRate: 16000 }); } catch (e) { ctx = new AC(); }
     ctx.resume();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
@@ -1764,10 +1778,14 @@ const LocalVoice = (() => {
       rec.on('result', m => onText(m.result.text || '', true, m.result.result));
       src = ctx.createMediaStreamSource(stream);
       node = ctx.createScriptProcessor(ctx.sampleRate <= 16000 ? 2048 : 4096, 1, 1); // ~0.1 s of audio per chunk
-      node.onaudioprocess = e => { if (!muted && rec) { try { rec.acceptWaveform(e.inputBuffer); } catch (err) {} } };
+      node.onaudioprocess = e => {
+        if (!peak) { const d = e.inputBuffer.getChannelData(0); for (let i = 0; i < d.length; i += 16) if (d[i] !== 0) { peak = 1; break; } }
+        if (!muted && rec) { try { rec.acceptWaveform(e.inputBuffer); } catch (err) {} }
+      };
       src.connect(node); node.connect(ctx.destination);
       ui('on');
-      log('› voz ativada (no aparelho). Diga “mostrar”, “acertei”, “certeza”…');
+      if (!native) log('› voz ativada (no aparelho). Diga “mostrar”, “acertei”, “certeza”…');
+      checkSilence(native);
       return true;
     } catch (e) {
       teardown(); want = false; ui('off');
@@ -1780,7 +1798,7 @@ const LocalVoice = (() => {
     available,
     get on() { return want; },
     start,
-    stop() { want = false; teardown(); ui('off'); log('› voz desligada'); },
+    stop() { want = false; clearTimeout(silenceCheck); teardown(); ui('off'); log('› voz desligada'); },
     pause() { bargeOnly = true; consumed = 0; lastCandidate = null; },
     resume() { setTimeout(() => { if (!TTS.speaking) { bargeOnly = false; skipToFinal = echoOpen; echoOpen = false; } }, 300); }, // skip the tail of the app's own speech
   };
