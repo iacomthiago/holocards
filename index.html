@@ -77,6 +77,9 @@ button{cursor:pointer}
 .chip.err .dot{background:var(--again);opacity:1}
 .card-tools{display:flex;align-items:center;gap:8px;min-width:0;margin-left:auto}
 .mini{background:none;border:1px solid var(--line-dim);border-radius:4px;padding:3px 9px;font:500 12px var(--f-hud);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-height:30px}
+a.mini{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap}
+a.mini[hidden]{display:none}
+.mini.ask{border-color:rgba(63,216,255,.45);color:var(--line)}
 .mini.danger{border-color:rgba(255,95,120,.35);color:var(--again)}
 .mini.air-hover{border-color:var(--line);color:var(--fg)}
 .archived{grid-column:1/-1;font-size:14px;color:var(--muted)}
@@ -322,7 +325,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 
   <main id="stage">
     <section id="view-cards" class="view">
-      <div class="deckline"><span>Baralho <b id="deck-name">—</b></span><span class="card-tools"><span id="card-state"></span><button class="mini" id="btn-archive" data-air>Arquivar</button><button class="mini danger" id="btn-delete" data-air>Apagar</button></span></div>
+      <div class="deckline"><span>Baralho <b id="deck-name">—</b></span><span class="card-tools"><span id="card-state"></span><a class="mini ask" id="btn-ask" target="_blank" rel="noopener" title="Copia este card e abre o projeto CGU no Claude; lá é só colar e escrever a dúvida" data-air>Tirar dúvida</a><button class="mini" id="btn-archive" data-air>Arquivar</button><button class="mini danger" id="btn-delete" data-air>Apagar</button></span></div>
       <article class="holo" id="holo">
         <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
         <div class="face q" id="face-q"></div>
@@ -788,7 +791,7 @@ function setDock() {
   $('#dock-reveal').hidden = !(cards && S.cur && !S.revealed) || asking;
   $('#dock-grades').hidden = !(cards && S.cur && S.revealed) || asking;
   $('#dock-done').hidden = !(cards && !S.cur) || asking;
-  $('#btn-archive').hidden = $('#btn-delete').hidden = !(cards && S.cur);
+  $('#btn-archive').hidden = $('#btn-delete').hidden = $('#btn-ask').hidden = !(cards && S.cur);
 }
 
 /* a yes/no question in the dock, answered by voice, hand or tap; silence runs onTimeout */
@@ -1002,9 +1005,48 @@ function moreNew() {
   log('› +10 cards novos hoje');
   showCard();
 }
+/* "Perguntar ao Claude": copies the whole card as text and opens the CGU project on claude.ai,
+   where the doubt is answered with the project's instructions (the subscription, no API key here).
+   The link is a real <a> so the phone can hand it to the Claude app. */
+const CLAUDE_PROJECT = 'https://claude.ai/project/01a0fca9-b1d0-728b-a690-6c30fa497a0e';
+function cardForClaude(card) {
+  const part = (label, text) => text ? `${label}: ${text}` : '';
+  const gab = gabOf(card), expl = backText(card, '.ak-expl');
+  const rest = backText(card, '.ak-disp') || backText(card, '.ak-ctx') || expl;
+  const answer = gab ? gab : backText(card, '.cloze') || (rest ? '' : answerText(card));
+  return [
+    'Estou estudando para a CGU no HoloCards e fiquei com dúvida neste flashcard.',
+    part('Baralho', $('#deck-name').textContent),
+    part('Enunciado', textOf(card.front)),
+    part(gab ? 'Gabarito' : 'Resposta', answer),
+    part('Em resumo', expl),
+    part('Dispositivo', backText(card, '.ak-disp')),
+    part('Para comparar', backText(card, '.ak-ctx')),
+    part('Fonte', backText(card, '.ak-fonte,.ak-src')),
+    'Minha dúvida: '
+  ].filter(Boolean).join('\n\n');
+}
+function copyText(text) {
+  try { navigator.clipboard.writeText(text).catch(() => copyFallback(text)); }
+  catch (e) { copyFallback(text); }
+}
+function copyFallback(text) {
+  const t = document.createElement('textarea');
+  t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(t); t.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  t.remove();
+}
+function askClaude() {
+  if (!S.cur) return;
+  copyText(cardForClaude(S.cur));
+  stopSpeaking();
+  log('› card copiado. No Claude, toque no campo de mensagem, cole e escreva sua dúvida.');
+}
 function textOf(html) {
   const d = document.createElement('div');
-  d.innerHTML = html.replace(/<br\s*\/?>|<\/(div|p|li)>/gi, '. ');
+  // the pause goes before each closing tag (keeping it), so a label box doesn't swallow the text after it
+  d.innerHTML = html.replace(/<br\s*\/?>/gi, '. ').replace(/<\/(div|p|li)>/gi, '. $&');
   d.querySelectorAll('.cloze').forEach(el => { if (/^\[.*\]$/.test(el.textContent)) el.textContent = ' lacuna '; });
   d.querySelectorAll('rt,.ak-tag,.ak-src,.ak-fonte,.ak-lab,.ak-disp-tit,.ak-ctx-tit').forEach(el => el.remove());
   return d.textContent.replace(/\s+/g, ' ').replace(/(\.\s*){2,}/g, '. ').trim();
@@ -2869,6 +2911,8 @@ function bindUI() {
   $('#study-weak').onclick = () => studyMode('@weak');
   $('#study-leech').onclick = () => studyMode('@leech');
   $('#study-errors').onclick = () => studyMode('@errors');
+  $('#btn-ask').href = CLAUDE_PROJECT;
+  $('#btn-ask').onclick = askClaude;
   $('#btn-archive').onclick = () => askRemove('archive');
   $('#btn-delete').onclick = () => askRemove('delete');
   $('#btn-confirm').onclick = confirmPending;
