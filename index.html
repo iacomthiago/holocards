@@ -166,6 +166,12 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 .deck-sub{grid-column:1/-1;display:flex;gap:8px;align-items:center}
 .deck-sub select{flex:1;min-width:0;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:8px;color:var(--fg)}
 .deck-sub{flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.move-box{flex-direction:column;align-items:stretch;padding:10px 0 2px;border-top:1px solid var(--line-faint)}
+.move-box label{display:flex;flex-direction:column;gap:4px}
+.move-box input[type=text]{min-height:40px;background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:8px;color:var(--fg)}
+.move-box .move-msg{color:var(--again)}
+.deck-actions{flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){.deck .deck-actions{grid-column:1/-1;grid-row:auto;justify-content:flex-start}}
 .deck-sub input[type=date]{background:var(--panel-solid);border:1px solid var(--line-dim);border-radius:4px;padding:6px 8px;color:var(--fg)}
 .exam-plan{font-family:var(--f-mono);font-size:13px;color:var(--hard)}
 .divider{display:flex;align-items:center;gap:12px;font:500 12px var(--f-hud);letter-spacing:.3em;color:var(--line)}
@@ -726,6 +732,87 @@ async function deleteDeck(id, fromSync) {
   if (S.deckId === id) { if (S.decks[0]) await openDeck(S.decks[0].id); else { S.deckId = null; S.cards = []; S.prog = {}; showCard(); } }
   renderLib();
 }
+/* Moving a deck inside another, like dragging decks in Anki: its cards become a subdeck of the
+   target (its own subdecks go along), with all their progress. "into" is a deck id, or the name of
+   a new deck to create. The target remembers the old name (alias), so importing that Anki deck
+   again later lands in the same place instead of recreating it. */
+async function moveDeck(srcId, into, subName) {
+  const src = S.decks.find(d => d.id === srcId);
+  if (!src) return;
+  let dst = S.decks.find(d => d.id === into);
+  if (!dst) {
+    const name = String(into || '').trim();
+    if (!name) throw new Error('escolha o baralho de destino');
+    dst = S.decks.find(d => d.name === name);
+    if (!dst) { const id = await addDeck(name, [], {}, src.source); dst = S.decks.find(d => d.id === id); }
+  }
+  if (dst.id === src.id) throw new Error('não dá pra mover um baralho para dentro dele mesmo');
+  const sub = String(subName || src.name).replace(/::+/g, ' ').trim() || src.name;
+  const [srcCards, srcProg, dstCards, dstProg] = [
+    await DB.get('deck:' + src.id) || [], src.id === S.deckId ? S.prog : await DB.get('prog:' + src.id) || {},
+    await DB.get('deck:' + dst.id) || [], dst.id === S.deckId ? S.prog : await DB.get('prog:' + dst.id) || {}];
+  const have = new Set(dstCards.map(c => c.id));
+  const moved = srcCards.filter(c => !have.has(c.id)).map(c => ({ ...c, sub: sub + (c.sub ? '::' + c.sub : '') }));
+  const cards = [...dstCards, ...moved];
+  const prog = mergeProg(dstProg, srcProg);
+  await DB.set('deck:' + dst.id, cards);
+  await DB.set('prog:' + dst.id, prog);
+  if (src.css) dst.css = { ...src.css, ...(dst.css || {}) };
+  // where each old Anki top-level name now lives (its own aliases move along, one level deeper)
+  dst.alias = { ...(dst.alias || {}), [src.name]: sub };
+  for (const [k, v] of Object.entries(src.alias || {})) dst.alias[k] = sub + '::' + v;
+  const exams = S.settings.exams || {};
+  if (exams[src.name] && exams[src.name].date && !(exams[dst.name] && exams[dst.name].date)) { exams[dst.name] = { ...exams[src.name], at: Date.now() }; saveSettings(); }
+  dst.count = cards.length; dst.updatedAt = Date.now();
+  await saveDeckList();
+  if (dst.id === S.deckId) { S.cards = cards; S.prog = prog; applyNoteCss(); }
+  const wasOpen = S.deckId === src.id;
+  await deleteDeck(src.id); // on the other devices too; its cards and progress now travel inside the target
+  (S.settings.libOpen ||= {})[dst.name] = true; saveSettings();
+  if (wasOpen) await openDeck(dst.id, sub);
+  renderLib();
+  Sync.soon(500);
+  return { dst, sub, n: moved.length };
+}
+// "Japonês - Hiragana" moved into "Japonês" becomes "Hiragana"
+function subNameFor(srcName, dstName) {
+  if (dstName && srcName.toLowerCase().startsWith(dstName.toLowerCase())) {
+    const rest = srcName.slice(dstName.length).replace(/^[\s\-–—:·|/]+/, '').trim();
+    if (rest) return rest;
+  }
+  return srcName;
+}
+function moveBox(d, row) {
+  const old = row.querySelector('.move-box');
+  if (old) { old.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'deck-sub move-box';
+  box.innerHTML = `<label>Colocar dentro de<select><option value="">— escolha —</option></select></label>
+    <input type="text" class="move-new" placeholder="Nome do baralho novo" hidden>
+    <label>Com o nome<input type="text" class="move-sub"></label>
+    <div class="sync-row"><button class="btn primary">Mover</button><button class="btn">Cancelar</button><span class="note move-msg"></span></div>`;
+  const sel = box.querySelector('select'), fresh = box.querySelector('.move-new'), sub = box.querySelector('.move-sub');
+  for (const o of S.decks) if (o.id !== d.id && o.source !== 'exemplo') sel.add(new Option(o.name, o.id));
+  sel.add(new Option('+ Baralho novo…', '@new'));
+  sub.value = d.name;
+  const target = () => sel.value === '@new' ? fresh.value.trim() : (S.decks.find(o => o.id === sel.value) || {}).name || '';
+  const suggest = () => { fresh.hidden = sel.value !== '@new'; sub.value = subNameFor(d.name, target()); };
+  sel.onchange = () => { suggest(); if (!fresh.hidden) fresh.focus(); };
+  fresh.oninput = suggest;
+  const [go, cancel] = box.querySelectorAll('button');
+  cancel.onclick = () => box.remove();
+  go.onclick = async () => {
+    const msg = box.querySelector('.move-msg');
+    try {
+      if (!target()) throw new Error('escolha o baralho de destino');
+      go.disabled = true;
+      const r = await moveDeck(d.id, sel.value === '@new' ? fresh.value.trim() : sel.value, sub.value);
+      log(`› “${d.name}” agora é ${r.dst.name} › ${r.sub}`);
+    } catch (e) { msg.textContent = e.message; go.disabled = false; }
+  };
+  row.appendChild(box);
+  sel.focus();
+}
 async function openDeck(id, filter) {
   S.deckId = id;
   S.cards = await DB.get('deck:' + id) || [];
@@ -1083,9 +1170,10 @@ async function renderLib() {
     row.className = 'deck' + (d.id === S.deckId ? ' active' : '');
     row.innerHTML = `<div class="deck-name"></div>
       <div class="deck-meta"><span>${cards.length} cards</span><span class="st-new">${q.counts.n} novos</span><span class="st-learn">${q.counts.l} aprendendo</span><span class="st-rev">${q.counts.r} revisar</span></div>
-      <div class="deck-actions"><button class="btn primary" data-air>Estudar</button><button class="btn danger" data-air>Apagar</button></div>`;
+      <div class="deck-actions"><button class="btn primary" data-air>Estudar</button><button class="btn" data-air title="Colocar este baralho dentro de outro">Mover</button><button class="btn danger" data-air>Apagar</button></div>`;
     row.querySelector('.deck-name').textContent = d.name;
-    const [study, del] = row.querySelectorAll('button');
+    const [study, move, del] = row.querySelectorAll('button');
+    if (d.source === 'exemplo') move.remove(); else move.onclick = () => moveBox(d, row);
     // each Anki subdeck is listed as a deck of its own, with its own counts, and studied on its own.
     // The counts split today's queue of the whole deck, so they add up to the deck's totals
     // (the daily new-card limit is shared by all its subdecks).
@@ -2505,9 +2593,16 @@ async function importApkg(file) {
     db.close();
     if (!groups.size) throw new Error('o pacote não tem cards (ou estão todos suspensos)');
     const ids = [], report = [];
-    for (const [name, g] of groups) {
+    for (let [name, g] of groups) {
       if (!g.cards.length) continue;
-      const r = await upsertDeck(name, 'anki', g.cards, g.prog, Date.now(), g.css, true);
+      // an Anki deck that was moved inside another one here goes to its new place
+      const home = S.decks.find(d => d.alias && d.alias[name] != null);
+      if (home) {
+        const at = home.alias[name];
+        for (const c of g.cards) c.sub = at + (c.sub ? '::' + c.sub : '');
+        name = home.name;
+      }
+      const r = await upsertDeck(name, home ? home.source : 'anki', g.cards, g.prog, Date.now(), g.css, true);
       ids.push(r.id);
       report.push(r.isNew ? `${name}: ${g.cards.length} cards` : `${name}: ${r.added} novos, ${g.cards.length - r.added} atualizados, nada apagado`);
     }
@@ -2554,7 +2649,7 @@ async function exportBackup() {
   const decks = [];
   for (const d of S.decks) {
     if (d.source === 'exemplo') continue;
-    decks.push({ name: d.name, source: d.source, updatedAt: d.updatedAt, css: d.css, cards: await DB.get('deck:' + d.id) || [], prog: d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {} });
+    decks.push({ name: d.name, source: d.source, updatedAt: d.updatedAt, css: d.css, alias: d.alias, cards: await DB.get('deck:' + d.id) || [], prog: d.id === S.deckId ? S.prog : await DB.get('prog:' + d.id) || {} });
   }
   const pdfs = [];
   for (const p of await Pdfs.list()) {
@@ -2591,6 +2686,7 @@ async function importBackup(file) {
         await DB.set('prog:' + here.id, merged);
         if (here.id === S.deckId) S.prog = merged;
       } else await upsertDeck(d.name, d.source || 'anki', d.cards, d.prog || {}, d.updatedAt || Date.now(), d.css);
+      if (d.alias) { const here = S.decks.find(x => x.name === d.name); if (here) { here.alias = { ...(here.alias || {}), ...d.alias }; await saveDeckList(); } }
     }
     const list = await Pdfs.list();
     for (const p of b.pdfs || []) {
@@ -2768,6 +2864,7 @@ const Sync = (() => {
         const pack = await unpackJson(packed);
         const cards = Array.isArray(pack) ? pack : pack.cards;
         await upsertDeck(name, meta.source || 'anki', cards, remote.prog[name] || {}, meta.updatedAt, Array.isArray(pack) ? undefined : pack.css);
+        if (!Array.isArray(pack) && pack.alias) { const here = S.decks.find(d => d.name === name); if (here) { here.alias = pack.alias; await saveDeckList(); } }
         touched = true; pulled++;
       }
 
@@ -2793,7 +2890,8 @@ const Sync = (() => {
         if (!rm || rm.deleted || !rm.raw || (rm.updatedAt || 0) < (d.updatedAt || 0)) {
           const file = 'deck-' + fnv(d.name) + '.txt';
           const deckCards = await DB.get('deck:' + d.id) || [];
-          files[file] = { content: await packJson(d.css && Object.keys(d.css).length ? { cards: deckCards, css: d.css } : deckCards) };
+          const css = d.css && Object.keys(d.css).length ? d.css : undefined, alias = d.alias && Object.keys(d.alias).length ? d.alias : undefined;
+          files[file] = { content: await packJson(css || alias ? { cards: deckCards, css, alias } : deckCards) };
           out.decks[d.name] = { file, updatedAt: d.updatedAt || Date.now(), count: d.count, source: d.source };
         }
       }
