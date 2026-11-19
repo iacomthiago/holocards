@@ -88,6 +88,13 @@ a.mini[hidden]{display:none}
 .subdeck .sd-name{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px}
 .subdeck .sd-meta{display:flex;gap:8px;font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
 .subdeck.active .sd-name{color:var(--line)}
+.subdeck[hidden],.subdecks[hidden]{display:none}
+.fold{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:4px 6px;min-height:32px;color:var(--muted);font:500 12px var(--f-hud);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.fold i{width:0;height:0;border-left:6px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent;transition:transform .15s}
+.fold[aria-expanded="true"] i{transform:rotate(90deg)}
+.subdeck .fold{padding:4px;min-width:28px;justify-content:center}
+.fold-gap{display:inline-block;width:28px;flex:none}
+.deck-fold{grid-column:1/-1;justify-self:start;margin-top:4px;white-space:nowrap}
 .archived summary{cursor:pointer;padding:4px 0}
 .archived ul{list-style:none;margin:6px 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto}
 .archived li{display:flex;gap:10px;align-items:center;justify-content:space-between}
@@ -198,6 +205,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
 .btn.danger.armed{background:rgba(255,95,120,.18);border-color:var(--again)}
 .imports{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .note{color:var(--muted);font-size:14px;max-width:65ch}
+#import-status{white-space:pre-line}
 .note ol{padding-left:20px;margin:6px 0}
 .setting{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line-faint)}
 .setting label{flex:1}
@@ -381,7 +389,7 @@ body.focus #app{grid-template-rows:minmax(0,1fr) auto}
           <h2>Baralhos</h2>
           <div id="deck-list"></div>
           <div class="imports">
-            <label class="btn primary">Importar do Anki (.apkg)<input type="file" id="in-apkg" accept=".apkg,.colpkg" hidden></label>
+            <label class="btn primary">Importar do Anki (.apkg)<input type="file" id="in-apkg" accept=".apkg,.colpkg" multiple hidden></label>
             <label class="btn">Importar texto (.txt/.csv)<input type="file" id="in-txt" accept=".txt,.csv,.tsv,text/plain" hidden></label>
             <label class="btn">Importar PDF<input type="file" id="in-pdf" accept="application/pdf,.pdf" multiple hidden></label>
           </div>
@@ -1097,19 +1105,58 @@ async function renderLib() {
           counts.get(k)[kind]++;
         }
       }
+      // folded like Anki's deck list: closed by default, and the open ones are remembered on this device
+      const open = S.settings.libOpen || (S.settings.libOpen = {});
+      const key = v => d.name + (v ? '::' + v : '');
+      const parents = new Set(subs.map(o => o.value.split('::').slice(0, -1).join('::')).filter(Boolean));
+      if (d.id === S.deckId && S.filter && !S.filter.startsWith('@')) { // the subdeck being studied is always in view
+        const p = S.filter.split('::');
+        open[key('')] = true;
+        for (let i = 1; i < p.length; i++) open[key(p.slice(0, i).join('::'))] = true;
+      }
       const box = document.createElement('div');
       box.className = 'subdecks';
+      const refold = () => {
+        box.hidden = !open[key('')];
+        for (const r of box.children) {
+          const p = r.dataset.value.split('::');
+          r.hidden = p.slice(0, -1).some((_, i) => !open[key(p.slice(0, i + 1).join('::'))]);
+          const f = r.querySelector('.fold');
+          if (f) f.setAttribute('aria-expanded', !!open[key(r.dataset.value)]);
+        }
+        deckFold.setAttribute('aria-expanded', !!open[key('')]);
+      };
+      const toggle = k => { open[k] = !open[k]; if (!open[k]) delete open[k]; saveSettings(); refold(); };
+      const deckFold = document.createElement('button');
+      deckFold.className = 'fold deck-fold';
+      deckFold.title = 'Mostrar ou esconder os subbaralhos';
+      deckFold.innerHTML = `<i></i>Subbaralhos (${subs.filter(o => !o.depth).length})`;
+      deckFold.onclick = () => toggle(key(''));
+      row.appendChild(deckFold);
       for (const o of subs) {
         const sc = counts.get(o.value) || { n: 0, l: 0, r: 0 };
         const r = document.createElement('div');
         r.className = 'subdeck' + (d.id === S.deckId && S.filter === o.value ? ' active' : '');
+        r.dataset.value = o.value;
         r.style.paddingLeft = o.depth * 16 + 'px';
-        r.innerHTML = `<span class="sd-name"></span><span class="sd-meta"><span class="st-new">${sc.n}</span><span class="st-learn">${sc.l}</span><span class="st-rev">${sc.r}</span></span><button class="mini" data-air>Estudar</button>`;
+        r.innerHTML = `${parents.has(o.value) ? '<button class="fold" title="Mostrar ou esconder"><i></i></button>' : '<span class="fold-gap"></span>'}<span class="sd-name"></span><span class="sd-meta"><span class="st-new">${sc.n}</span><span class="st-learn">${sc.l}</span><span class="st-rev">${sc.r}</span></span><button class="mini" data-air>Estudar</button>`;
         r.querySelector('.sd-name').textContent = `${o.label} (${o.n})`;
-        r.querySelector('button').onclick = async () => { await openDeck(d.id, o.value); setView('cards'); };
+        r.querySelector('.mini').onclick = async () => { await openDeck(d.id, o.value); setView('cards'); };
+        const f = r.querySelector('.fold');
+        if (f) f.onclick = () => toggle(key(o.value));
         box.appendChild(r);
       }
       row.appendChild(box);
+      refold();
+    }
+    // answers kept for cards that aren't in the deck (an import that replaced part of it, before this fix)
+    const ids = new Set(cards.map(c => c.id));
+    const orphans = Object.keys(prog).filter(id => !ids.has(id) && prog[id].s !== 'new').length;
+    if (orphans) {
+      const o = document.createElement('p');
+      o.className = 'note deck-sub';
+      o.textContent = `Progresso guardado de ${orphans} card(s) que não estão neste baralho. Importe de novo o pacote do Anki que tinha esses cards: eles voltam com o progresso.`;
+      row.appendChild(o);
     }
     const examRow = document.createElement('div');
     examRow.className = 'deck-sub';
@@ -2326,19 +2373,29 @@ function renderTemplate(tpl, fields, ctx) { // the subset of Anki's template lan
 }
 // Re-importing a deck with the same name updates it: new cards are added, deleted ones removed,
 // and for each card the schedule with more reviews wins (studied here or in Anki).
-async function upsertDeck(name, source, cards, prog, updatedAt = Date.now(), css) {
+/* keep: an import from a file only adds and updates cards; cards it doesn't bring stay in the deck.
+   Two Anki packages often share the same top-level deck (CGU26::Tec, CGU26::Discursivo...), and
+   re-exporting just one part must never wipe the rest. A sync instead brings the full card list.
+   Progress is never dropped: an answer for a card that isn't in the list (yet) is kept, so
+   importing the package again brings the card back with its progress. */
+async function upsertDeck(name, source, cards, prog, updatedAt = Date.now(), css, keep = false) {
   const existing = S.decks.find(d => d.name === name && d.source === source);
   if (!existing) {
     const id = await addDeck(name, cards, prog, source, updatedAt);
     if (css) { S.decks.find(d => d.id === id).css = css; await saveDeckList(); if (id === S.deckId) applyNoteCss(); }
     return { id, isNew: true };
   }
-  if (css) existing.css = css;
+  if (css) existing.css = { ...(keep && existing.css || {}), ...css };
   const oldCards = await DB.get('deck:' + existing.id) || [];
   const oldProg = existing.id === S.deckId ? S.prog : await DB.get('prog:' + existing.id) || {};
-  const oldIds = new Set(oldCards.map(c => c.id)), newIds = new Set(cards.map(c => c.id));
-  const merged = {};
-  for (const c of cards) { const pick = newerEntry(oldProg[c.id], prog[c.id]); if (pick) merged[c.id] = pick; }
+  const oldIds = new Set(oldCards.map(c => c.id));
+  if (keep) {
+    const incoming = new Map(cards.map(c => [c.id, c]));
+    cards = [...oldCards.map(c => incoming.get(c.id) || c), ...cards.filter(c => !oldIds.has(c.id))];
+  }
+  const newIds = new Set(cards.map(c => c.id));
+  const merged = { ...oldProg };
+  for (const id in prog) { const pick = newerEntry(oldProg[id], prog[id]); if (pick) merged[id] = pick; }
   await DB.set('deck:' + existing.id, cards);
   await DB.set('prog:' + existing.id, merged);
   existing.count = cards.length; existing.updatedAt = updatedAt;
@@ -2450,17 +2507,26 @@ async function importApkg(file) {
     const ids = [], report = [];
     for (const [name, g] of groups) {
       if (!g.cards.length) continue;
-      const r = await upsertDeck(name, 'anki', g.cards, g.prog, Date.now(), g.css);
+      const r = await upsertDeck(name, 'anki', g.cards, g.prog, Date.now(), g.css, true);
       ids.push(r.id);
-      report.push(r.isNew ? `${name}: ${g.cards.length} cards` : `${name}: ${r.added} novos, ${r.removed} removidos, progresso mantido`);
+      report.push(r.isNew ? `${name}: ${g.cards.length} cards` : `${name}: ${r.added} novos, ${g.cards.length - r.added} atualizados, nada apagado`);
     }
-    setImportStatus(report.join(' · ') + (skipped ? ` · ${skipped} suspensos ignorados` : ''));
     await openDeck(ids.includes(S.deckId) ? S.deckId : ids[0], ids.includes(S.deckId) ? S.filter : '');
     renderLib();
     Sync.soon(500);
+    return report.join(' · ') + (skipped ? ` · ${skipped} suspensos ignorados` : '');
   } catch (e) {
-    setImportStatus('Não consegui importar: ' + e.message);
+    return 'Não consegui importar: ' + e.message;
   }
+}
+// several packages at once, one after the other
+async function importApkgs(files) {
+  const out = [];
+  for (const [i, f] of files.entries()) {
+    setImportStatus(`${files.length > 1 ? `(${i + 1}/${files.length}) ` : ''}Lendo ${f.name}…`);
+    out.push((files.length > 1 ? f.name + ' → ' : '') + await importApkg(f));
+  }
+  setImportStatus(out.join('\n'));
 }
 
 /* ================= sync between devices (a private GitHub gist) ================= */
@@ -2941,7 +3007,7 @@ function bindUI() {
   $('#pdf-zin').onclick = () => PDF.zoom(1.2);
   $('#pdf-zout').onclick = () => PDF.zoom(1 / 1.2);
   $('#pdf-read').onclick = () => PDF.read();
-  $('#in-apkg').onchange = e => { importApkg(e.target.files[0]); e.target.value = ''; };
+  $('#in-apkg').onchange = e => { importApkgs([...e.target.files]); e.target.value = ''; };
   $('#in-txt').onchange = e => { importText(e.target.files[0]); e.target.value = ''; };
   $('#in-pdf').onchange = $('#in-pdf2').onchange = e => { openPdfFiles([...e.target.files]); e.target.value = ''; };
   $('#backup-export').onclick = () => exportBackup().catch(e => { $('#backup-status').textContent = 'Não consegui gerar o backup: ' + e.message; });
